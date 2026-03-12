@@ -12,7 +12,6 @@ PLUGIN_BASE="$HOME/.claude/plugins/cache"
 # Find the plugin root - it may be nested one level (e.g., fe-vibe/)
 PLUGIN_ROOT=""
 if [ -d "$PLUGIN_BASE" ]; then
-  # Look for directories containing plugin packages (those with skills/ or agents/ subdirs)
   for candidate in "$PLUGIN_BASE" "$PLUGIN_BASE"/*/; do
     if ls "$candidate"/*/latest/skills 2>/dev/null | head -1 > /dev/null 2>&1 || \
        ls "$candidate"/fe-*/*/skills 2>/dev/null | head -1 > /dev/null 2>&1; then
@@ -20,7 +19,6 @@ if [ -d "$PLUGIN_BASE" ]; then
       break
     fi
   done
-  # Fallback: just use the cache dir
   if [ -z "$PLUGIN_ROOT" ]; then
     PLUGIN_ROOT="$PLUGIN_BASE"
   fi
@@ -34,6 +32,51 @@ fi
 
 echo "Scanning plugins in: $PLUGIN_ROOT"
 
+# Extract description from frontmatter of a .md file
+# Looks for: description: <text> between --- markers
+extract_description() {
+  local file="$1"
+  if [ ! -f "$file" ]; then
+    echo ""
+    return
+  fi
+  # Read frontmatter between first two --- lines, extract description field
+  local in_front=false
+  local desc=""
+  while IFS= read -r line; do
+    if [[ "$line" == "---" ]]; then
+      if $in_front; then
+        break
+      else
+        in_front=true
+        continue
+      fi
+    fi
+    if $in_front; then
+      if [[ "$line" =~ ^description:\ *(.*) ]]; then
+        desc="${BASH_REMATCH[1]}"
+        # Strip surrounding quotes if present
+        desc="${desc#\"}"
+        desc="${desc%\"}"
+        desc="${desc#\'}"
+        desc="${desc%\'}"
+      fi
+    fi
+  done < "$file"
+  echo "$desc"
+}
+
+# Escape string for safe JSON embedding
+json_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/}"
+  s="${s//$'\t'/\\t}"
+  echo "$s"
+}
+
 # Build JSON for each plugin
 PLUGIN_JSON="{"
 FIRST_PLUGIN=true
@@ -41,8 +84,6 @@ FIRST_PLUGIN=true
 for plugin_dir in "$PLUGIN_ROOT"/*/; do
   [ -d "$plugin_dir" ] || continue
   plugin_name=$(basename "$plugin_dir")
-
-  # Skip non-plugin directories
   [[ "$plugin_name" == "node_modules" || "$plugin_name" == ".git" ]] && continue
 
   # Find the version directory (must contain skills/ or agents/ to be a real plugin)
@@ -50,69 +91,82 @@ for plugin_dir in "$PLUGIN_ROOT"/*/; do
   version=""
   for vd in "$plugin_dir"/*/; do
     [ -d "$vd" ] || continue
-    # A valid version dir has a skills/ or agents/ subdirectory
     if [ -d "$vd/skills" ] || [ -d "$vd/agents" ]; then
-      v=$(basename "$vd")
       version_dir="$vd"
-      version="$v"
+      version=$(basename "$vd")
       break
     fi
   done
-
   [ -z "$version_dir" ] && continue
 
-  # Collect skills
+  # Collect skills with descriptions
   skills_json="["
   first_skill=true
   if [ -d "$version_dir/skills" ]; then
     for skill_dir in "$version_dir/skills"/*/; do
       [ -d "$skill_dir" ] || continue
       skill_name=$(basename "$skill_dir")
+
+      # Try SKILL.md first, then README.md for description
+      desc=""
+      if [ -f "$skill_dir/SKILL.md" ]; then
+        desc=$(extract_description "$skill_dir/SKILL.md")
+      fi
+      if [ -z "$desc" ] && [ -f "$skill_dir/README.md" ]; then
+        # Grab first non-heading, non-empty line from README as fallback
+        desc=$(grep -m1 -v '^#\|^$\|^---' "$skill_dir/README.md" 2>/dev/null | head -1)
+      fi
+      desc=$(json_escape "${desc:-No description available}")
+
       if $first_skill; then first_skill=false; else skills_json+=","; fi
-      skills_json+="\"$skill_name\""
+      skills_json+="{\"name\":\"$skill_name\",\"desc\":\"$desc\"}"
     done
   fi
   skills_json+="]"
 
-  # Collect agents (can be .md files, .json files, or subdirectories)
+  # Collect agents with descriptions
   agents_json="["
   first_agent=true
   if [ -d "$version_dir/agents" ]; then
-    # Check for .md files (e.g., databricks-apps-developer.md)
     for agent_file in "$version_dir/agents"/*.md "$version_dir/agents"/*.json; do
       [ -f "$agent_file" ] || continue
       agent_name=$(basename "$agent_file")
       agent_name="${agent_name%.md}"
       agent_name="${agent_name%.json}"
+
+      desc=$(extract_description "$agent_file")
+      desc=$(json_escape "${desc:-No description available}")
+
       if $first_agent; then first_agent=false; else agents_json+=","; fi
-      agents_json+="\"$agent_name\""
+      agents_json+="{\"name\":\"$agent_name\",\"desc\":\"$desc\"}"
     done
-    # Check for subdirectories
     for agent_dir in "$version_dir/agents"/*/; do
       [ -d "$agent_dir" ] || continue
       agent_name=$(basename "$agent_dir")
+      desc=""
+      if [ -f "$agent_dir/AGENT.md" ]; then
+        desc=$(extract_description "$agent_dir/AGENT.md")
+      elif [ -f "$agent_dir/README.md" ]; then
+        desc=$(grep -m1 -v '^#\|^$\|^---' "$agent_dir/README.md" 2>/dev/null | head -1)
+      fi
+      desc=$(json_escape "${desc:-No description available}")
       if $first_agent; then first_agent=false; else agents_json+=","; fi
-      agents_json+="\"$agent_name\""
+      agents_json+="{\"name\":\"$agent_name\",\"desc\":\"$desc\"}"
     done
   fi
-  # Also check agent-definitions/
   if [ -d "$version_dir/agent-definitions" ]; then
     for agent_file in "$version_dir/agent-definitions"/*.json "$version_dir/agent-definitions"/*.md; do
       [ -f "$agent_file" ] || continue
       agent_name=$(basename "$agent_file")
       agent_name="${agent_name%.md}"
       agent_name="${agent_name%.json}"
+      desc=$(extract_description "$agent_file")
+      desc=$(json_escape "${desc:-No description available}")
       if $first_agent; then first_agent=false; else agents_json+=","; fi
-      agents_json+="\"$agent_name\""
+      agents_json+="{\"name\":\"$agent_name\",\"desc\":\"$desc\"}"
     done
   fi
   agents_json+="]"
-
-  # Skip plugins with no skills and no agents
-  if [ "$skills_json" = "[]" ] && [ "$agents_json" = "[]" ]; then
-    # Still include but mark as empty
-    :
-  fi
 
   if $FIRST_PLUGIN; then FIRST_PLUGIN=false; else PLUGIN_JSON+=","; fi
   PLUGIN_JSON+="\"$plugin_name\":{\"version\":\"$version\",\"skills\":$skills_json,\"agents\":$agents_json}"
@@ -120,7 +174,7 @@ done
 
 PLUGIN_JSON+="}"
 
-echo "Found plugins: $(echo "$PLUGIN_JSON" | grep -o '"fe-[^"]*"' | tr '\n' ' ')"
+echo "Building Vibe Office..."
 
 # Generate the HTML
 cat > "$OUTPUT" << 'HTMLEOF'
@@ -149,7 +203,6 @@ cat > "$OUTPUT" << 'HTMLEOF'
     overflow-x: hidden;
   }
 
-  /* === HEADER === */
   .header {
     background: linear-gradient(135deg, var(--surface) 0%, var(--surface2) 100%);
     border-bottom: 3px solid var(--accent1);
@@ -172,7 +225,6 @@ cat > "$OUTPUT" << 'HTMLEOF'
   .stat .dot.skills { background: var(--green); }
   .stat .dot.agents { background: var(--yellow); }
 
-  /* === SEARCH === */
   .search-bar {
     padding: 16px 30px;
     background: var(--surface);
@@ -187,13 +239,11 @@ cat > "$OUTPUT" << 'HTMLEOF'
   .search-bar input:focus { border-color: var(--accent1); }
   .search-bar input::placeholder { color: var(--text-dim); }
 
-  /* === OFFICE FLOOR === */
   .office-floor {
     padding: 24px 30px;
     display: flex; flex-direction: column; gap: 24px;
   }
 
-  /* === DEPARTMENT (Plugin) === */
   .department {
     background: var(--surface);
     border: 2px solid #2a2a4a;
@@ -213,22 +263,35 @@ cat > "$OUTPUT" << 'HTMLEOF'
   }
   .dept-header:hover { background: linear-gradient(90deg, rgba(102,126,234,0.2), transparent); }
 
+  .dept-left {
+    display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
+  }
   .dept-name {
     font-family: 'Press Start 2P', monospace;
     font-size: 11px;
     display: flex; align-items: center; gap: 10px;
   }
   .dept-icon {
-    width: 32px; height: 32px;
+    width: 32px; height: 32px; min-width: 32px;
     display: flex; align-items: center; justify-content: center;
     font-size: 20px;
     background: var(--surface2); border-radius: 6px;
     border: 2px solid #3a3a5a;
     image-rendering: pixelated;
   }
+  .dept-title-block { display: flex; flex-direction: column; gap: 4px; }
+  .dept-desc {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.4;
+    max-width: 500px;
+  }
   .dept-meta {
     display: flex; gap: 12px; font-size: 10px; color: var(--text-dim);
     font-family: 'Press Start 2P', monospace;
+    align-items: center;
+    flex-shrink: 0;
   }
   .dept-badge {
     padding: 2px 8px; border-radius: 4px;
@@ -237,16 +300,14 @@ cat > "$OUTPUT" << 'HTMLEOF'
   .badge-skill { background: rgba(74,222,128,0.15); color: var(--green); }
   .badge-agent { background: rgba(251,191,36,0.15); color: var(--yellow); }
 
-  /* === DESK GRID (Skills/Agents) === */
   .desk-grid {
     padding: 16px 20px;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 10px;
   }
   .desk-grid.collapsed { display: none; }
 
-  /* === DESK (Individual Skill/Agent) === */
   .desk {
     background: var(--bg);
     border: 2px solid #2a2a4a;
@@ -283,6 +344,17 @@ cat > "$OUTPUT" << 'HTMLEOF'
     word-break: break-word;
     line-height: 1.4;
   }
+  .desk-desc {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 4px;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
   .desk-type {
     font-size: 9px;
     margin-top: 4px;
@@ -291,7 +363,6 @@ cat > "$OUTPUT" << 'HTMLEOF'
   .desk-type.skill-type { color: var(--green); }
   .desk-type.agent-type { color: var(--yellow); }
 
-  /* Pixel character animation */
   .pixel-char {
     animation: float 3s ease-in-out infinite;
   }
@@ -302,7 +373,6 @@ cat > "$OUTPUT" << 'HTMLEOF'
     50% { transform: translateY(-3px); }
   }
 
-  /* === FOOTER === */
   .footer {
     padding: 20px 30px;
     text-align: center;
@@ -312,14 +382,12 @@ cat > "$OUTPUT" << 'HTMLEOF'
     border-top: 1px solid #2a2a4a;
   }
 
-  /* Toggle arrow */
   .toggle-arrow {
     transition: transform 0.3s;
     font-size: 12px; color: var(--text-dim);
   }
   .toggle-arrow.collapsed { transform: rotate(-90deg); }
 
-  /* Category labels row */
   .category-bar {
     padding: 10px 30px;
     display: flex; gap: 8px; flex-wrap: wrap;
@@ -334,6 +402,9 @@ cat > "$OUTPUT" << 'HTMLEOF'
     border-color: var(--accent1); color: var(--accent1);
     background: rgba(102,126,234,0.1);
   }
+
+  /* Tooltip for full description on hover */
+  .desk[title] { cursor: help; }
 </style>
 </head>
 <body>
@@ -356,7 +427,7 @@ cat > "$OUTPUT" << 'HTMLEOF'
 <div class="office-floor" id="officeFloor"></div>
 
 <div class="footer">
-  VIBE OFFICE v1.0 // Auto-generated from ~/.claude/plugins
+  VIBE OFFICE v1.1 // Auto-generated from ~/.claude/plugins
 </div>
 
 <script>
@@ -366,7 +437,6 @@ HTMLEOF
 echo "const PLUGIN_DATA = (function() {" >> "$OUTPUT"
 echo "  const raw = $PLUGIN_JSON;" >> "$OUTPUT"
 cat >> "$OUTPUT" << 'JSEOF'
-  // Assign icons based on plugin name keywords
   const iconMap = {
     "databricks-tools": "&#x1F3ED;",
     "file-expenses": "&#x1F4B3;",
@@ -379,17 +449,32 @@ cat >> "$OUTPUT" << 'JSEOF'
     "vibe-setup": "&#x2699;",
     "workflows": "&#x1F4CB;",
   };
+  const deptDescriptions = {
+    "databricks-tools": "Deploy, manage, and query Databricks workspaces, apps, dashboards, lakebase, and data resources",
+    "file-expenses": "Analyze receipts, identify expenses, and file expense reports with Emburse ChromeRiver",
+    "google-tools": "Full Google Workspace integration \u2014 Docs, Sheets, Slides, Drive, Calendar, Gmail, Tasks, Forms",
+    "internal-tools": "Internal analytics, org lookups, Logfood queries, Aha ideas, engineering blockers, and jargon",
+    "jira-tools": "Create, search, and manage JIRA tickets including ES engineering support tickets",
+    "mcp-servers": "MCP server configurations for external tool connections (Slack, Chrome DevTools, etc.)",
+    "salesforce-tools": "Read and update Salesforce CRM \u2014 UCOs, accounts, opportunities, blockers, and escalations",
+    "specialized-agents": "Diagram generation (Mermaid, Lucid) and web dev loop testing with Chrome DevTools",
+    "vibe-setup": "Configure, validate, update, and troubleshoot the Vibe environment and plugins",
+    "workflows": "End-to-end workflows \u2014 POC docs, RFPs, competitive analysis, account reviews, training, and more",
+  };
   for (const [name, data] of Object.entries(raw)) {
-    data.icon = "&#x1F4E6;"; // default
+    data.icon = "&#x1F4E6;";
+    data.description = "";
     for (const [key, icon] of Object.entries(iconMap)) {
       if (name.includes(key)) { data.icon = icon; break; }
+    }
+    for (const [key, desc] of Object.entries(deptDescriptions)) {
+      if (name.includes(key)) { data.description = desc; break; }
     }
   }
   return raw;
 })();
 JSEOF
 
-# Append the rest of the JS
 cat >> "$OUTPUT" << 'JSEOF'
 
 const skillEmojis = {
@@ -419,21 +504,26 @@ function getEmoji(name) {
   return "&#x1F4E6;";
 }
 
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
 function render() {
   const floor = document.getElementById('officeFloor');
   const catBar = document.getElementById('categoryBar');
   let totalSkills = 0, totalAgents = 0, totalPlugins = 0;
 
-  // Category buttons
   const cats = Object.keys(PLUGIN_DATA);
   catBar.innerHTML = '<button class="cat-btn active" onclick="filterCat(\'all\')">ALL</button>';
   cats.forEach(cat => {
-    if (PLUGIN_DATA[cat].skills.length + PLUGIN_DATA[cat].agents.length === 0) return;
+    const d = PLUGIN_DATA[cat];
+    if (d.skills.length + d.agents.length === 0) return;
     const label = cat.replace('fe-', '').replace(/-/g, ' ').toUpperCase();
     catBar.innerHTML += `<button class="cat-btn" data-cat="${cat}" onclick="filterCat('${cat}')">${label}</button>`;
   });
 
-  // Departments
   floor.innerHTML = '';
   for (const [pluginName, data] of Object.entries(PLUGIN_DATA)) {
     if (data.skills.length + data.agents.length === 0) continue;
@@ -442,24 +532,33 @@ function render() {
     totalAgents += data.agents.length;
 
     const label = pluginName.replace('fe-', '').replace(/-/g, ' ').toUpperCase();
+    const deptDesc = data.description ? `<div class="dept-desc">${escapeHtml(data.description)}</div>` : '';
 
     let desksHTML = '';
     data.skills.forEach(s => {
+      const name = typeof s === 'object' ? s.name : s;
+      const desc = typeof s === 'object' ? s.desc : '';
+      const safeDesc = escapeHtml(desc);
       desksHTML += `
-        <div class="desk" data-name="${s}">
-          <div class="desk-avatar skill pixel-char">${getEmoji(s)}</div>
+        <div class="desk" data-name="${name}" data-desc="${safeDesc}" title="${safeDesc}">
+          <div class="desk-avatar skill pixel-char">${getEmoji(name)}</div>
           <div class="desk-info">
-            <div class="desk-name">${s}</div>
+            <div class="desk-name">${escapeHtml(name)}</div>
+            ${desc ? `<div class="desk-desc">${safeDesc}</div>` : ''}
             <div class="desk-type skill-type">SKILL</div>
           </div>
         </div>`;
     });
     data.agents.forEach(a => {
+      const name = typeof a === 'object' ? a.name : a;
+      const desc = typeof a === 'object' ? a.desc : '';
+      const safeDesc = escapeHtml(desc);
       desksHTML += `
-        <div class="desk" data-name="${a}">
-          <div class="desk-avatar agent pixel-char">${getEmoji(a)}</div>
+        <div class="desk" data-name="${name}" data-desc="${safeDesc}" title="${safeDesc}">
+          <div class="desk-avatar agent pixel-char">${getEmoji(name)}</div>
           <div class="desk-info">
-            <div class="desk-name">${a}</div>
+            <div class="desk-name">${escapeHtml(name)}</div>
+            ${desc ? `<div class="desk-desc">${safeDesc}</div>` : ''}
             <div class="desk-type agent-type">AGENT</div>
           </div>
         </div>`;
@@ -468,9 +567,12 @@ function render() {
     floor.innerHTML += `
       <div class="department" data-plugin="${pluginName}">
         <div class="dept-header" onclick="toggleDept(this)">
-          <div class="dept-name">
+          <div class="dept-left">
             <div class="dept-icon">${data.icon}</div>
-            ${label}
+            <div class="dept-title-block">
+              <div class="dept-name">${label}</div>
+              ${deptDesc}
+            </div>
           </div>
           <div style="display:flex;align-items:center;gap:12px">
             <div class="dept-meta">
@@ -516,7 +618,8 @@ document.getElementById('search').addEventListener('input', function() {
     let hasMatch = false;
     dept.querySelectorAll('.desk').forEach(desk => {
       const name = desk.dataset.name.toLowerCase();
-      const match = !q || name.includes(q);
+      const desc = (desk.dataset.desc || '').toLowerCase();
+      const match = !q || name.includes(q) || desc.includes(q);
       desk.classList.toggle('hidden', !match);
       if (match) hasMatch = true;
     });
