@@ -59,7 +59,7 @@ def run_agent(agent_id, prompt):
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
-            env={**os.environ, "NO_COLOR": "1"},
+            env={k: v for k, v in os.environ.items() if k != "CLAUDECODE"} | {"NO_COLOR": "1"},
         )
         agent["process"] = proc
 
