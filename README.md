@@ -1,4 +1,5 @@
 # Vibe Office
+<img width="2312" height="1118" alt="image" src="https://github.com/user-attachments/assets/f6c0b299-df42-4bd2-bf36-bcf11110fdda" />
 
 A pixel-art dashboard that visualizes all your installed Claude Code plugins, skills, and agents as an interactive "office" UI.
 
