@@ -769,10 +769,451 @@
   }
   .agent-panel-body.collapsed { display: none; }
 
+  /* Create Agent Modal */
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease-out;
+  }
+  @keyframes fadeIn { 0% { opacity: 0; } 100% { opacity: 1; } }
+
+  .modal {
+    background: var(--surface);
+    border: 2px solid var(--accent1);
+    border-radius: 16px;
+    width: 700px; max-width: 90vw; max-height: 85vh;
+    overflow-y: auto;
+    padding: 24px;
+    animation: modalSlide 0.25s ease-out;
+  }
+  @keyframes modalSlide {
+    0% { opacity: 0; transform: translateY(20px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  .modal-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 12px;
+    background: linear-gradient(90deg, var(--accent1), var(--accent3));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    margin-bottom: 20px;
+  }
+
+  .modal-field { margin-bottom: 16px; }
+  .modal-field label {
+    display: block;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px; color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  .modal-field input, .modal-field textarea {
+    width: 100%; padding: 10px 14px;
+    background: var(--bg); border: 2px solid #334; border-radius: 8px;
+    color: var(--text); font-family: 'Inter', sans-serif; font-size: 13px;
+    outline: none; line-height: 1.5;
+  }
+  .modal-field input:focus, .modal-field textarea:focus { border-color: var(--accent1); }
+  .modal-field textarea { min-height: 60px; resize: vertical; }
+
+  .modal-field .modal-hint {
+    font-size: 11px; color: var(--text-dim); margin-top: 4px;
+    font-family: 'Inter', sans-serif;
+  }
+
+  /* Skill picker inside modal */
+  .modal-skill-picker {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    max-height: 250px; overflow-y: auto;
+    padding: 8px;
+    background: var(--bg);
+    border: 2px solid #334;
+    border-radius: 8px;
+  }
+  .modal-skill-chip {
+    display: flex; align-items: center; gap: 5px;
+    padding: 5px 10px;
+    background: var(--surface);
+    border: 1px solid #2a2a4a;
+    border-radius: 6px;
+    font-size: 10px;
+    font-family: 'Press Start 2P', monospace;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .modal-skill-chip:hover {
+    border-color: var(--accent1); color: var(--text);
+  }
+  .modal-skill-chip.selected {
+    border-color: var(--green); color: var(--green);
+    background: rgba(74,222,128,0.08);
+  }
+  .modal-skill-chip .msc-emoji { font-size: 12px; }
+
+  .modal-skill-search {
+    width: 100%; padding: 8px 12px;
+    background: var(--bg); border: 1px solid #334; border-radius: 6px;
+    color: var(--text); font-size: 11px; outline: none;
+    font-family: 'Press Start 2P', monospace; font-size: 8px;
+    margin-bottom: 8px;
+  }
+  .modal-skill-search:focus { border-color: var(--accent1); }
+
+  .modal-actions {
+    display: flex; gap: 10px; justify-content: flex-end;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #2a2a4a;
+  }
+
+  /* Custom agent badge */
+  .custom-badge {
+    font-size: 7px; padding: 1px 5px; border-radius: 8px;
+    background: var(--accent3); color: white;
+    margin-left: 6px; vertical-align: middle;
+    font-family: 'Press Start 2P', monospace;
+  }
+
+  .agent-type-card .custom-action-btn {
+    width: 28px; height: 28px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 6px;
+    font-size: 16px;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+  }
+  .agent-type-card .custom-action-btn:hover { opacity: 1; transform: scale(1.1); }
+  .agent-type-card .custom-action-btn.edit-btn {
+    color: var(--accent1);
+  }
+  .agent-type-card .custom-action-btn.edit-btn:hover {
+    background: rgba(102,126,234,0.15);
+    border-color: var(--accent1);
+  }
+  .agent-type-card .custom-action-btn.delete-btn {
+    color: var(--red);
+  }
+  .agent-type-card .custom-action-btn.delete-btn:hover {
+    background: rgba(248,113,113,0.15);
+    border-color: var(--red);
+  }
+
+  /* ============================== */
+  /* === WORKFLOWS TAB STYLES === */
+  /* ============================== */
+  .workflows-container {
+    padding: 24px 30px;
+    display: flex; gap: 24px;
+    min-height: calc(100vh - 200px);
+  }
+
+  .wf-sidebar {
+    width: 280px; min-width: 280px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+
+  .wf-card {
+    background: var(--surface);
+    border: 2px solid #2a2a4a;
+    border-radius: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .wf-card:hover { border-color: var(--accent1); }
+  .wf-card.selected {
+    border-color: var(--orange);
+    background: linear-gradient(135deg, rgba(251,146,60,0.12), rgba(240,147,251,0.06));
+  }
+  .wf-card-name {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px; color: var(--text);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .wf-card-desc {
+    font-size: 11px; color: var(--text-dim);
+    margin-top: 6px; line-height: 1.4;
+  }
+  .wf-card-steps {
+    margin-top: 6px; font-size: 8px;
+    font-family: 'Press Start 2P', monospace;
+    color: var(--orange);
+  }
+
+  .wf-main {
+    flex: 1;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+
+  /* Pipeline canvas with grid background */
+  .pipeline-canvas {
+    position: relative;
+    background:
+      radial-gradient(circle at 1px 1px, rgba(102,126,234,0.08) 1px, transparent 0);
+    background-size: 24px 24px;
+    border: 2px solid #2a2a4a;
+    border-radius: 16px;
+    padding: 32px 40px;
+    min-height: 300px;
+  }
+
+  .pipeline-builder {
+    display: flex; flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  /* Node card (n8n style) */
+  .pipeline-node {
+    width: 520px;
+    background: var(--surface);
+    border: 2px solid #3a3a5a;
+    border-radius: 16px;
+    overflow: hidden;
+    transition: all 0.3s;
+    position: relative;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  }
+  .pipeline-node:hover { border-color: var(--accent1); box-shadow: 0 6px 24px rgba(102,126,234,0.2); }
+  .pipeline-node.active-step {
+    border-color: var(--cyan);
+    box-shadow: 0 0 30px rgba(34,211,238,0.25), 0 6px 24px rgba(0,0,0,0.3);
+    animation: nodeGlow 2s ease-in-out infinite;
+  }
+  @keyframes nodeGlow {
+    0%, 100% { box-shadow: 0 0 20px rgba(34,211,238,0.2), 0 6px 24px rgba(0,0,0,0.3); }
+    50% { box-shadow: 0 0 40px rgba(34,211,238,0.35), 0 6px 24px rgba(0,0,0,0.3); }
+  }
+  .pipeline-node.done-step { border-color: var(--green); }
+  .pipeline-node.error-step { border-color: var(--red); }
+
+  /* Node top bar with number + agent icon */
+  .node-topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px;
+    background: linear-gradient(90deg, rgba(102,126,234,0.12), rgba(118,75,162,0.08));
+    border-bottom: 1px solid #2a2a4a;
+  }
+  .node-topbar-left {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .node-number {
+    width: 30px; height: 30px; min-width: 30px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent1), var(--accent2));
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px; color: white;
+    box-shadow: 0 2px 8px rgba(102,126,234,0.4);
+  }
+  .node-name-input {
+    padding: 4px 8px;
+    background: transparent; border: 1px solid transparent; border-radius: 6px;
+    color: var(--text); font-family: 'Press Start 2P', monospace;
+    font-size: 10px; outline: none;
+    transition: all 0.2s;
+    max-width: 200px;
+  }
+  .node-name-input:hover { border-color: #3a3a5a; }
+  .node-name-input:focus { border-color: var(--accent1); background: var(--bg); }
+
+  .node-topbar-right {
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  /* Input/output port dots */
+  .node-port {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 2px solid #3a3a5a;
+    background: var(--surface);
+    position: absolute;
+    left: 50%; transform: translateX(-50%);
+    z-index: 2;
+    transition: all 0.3s;
+  }
+  .node-port.input-port { top: -8px; }
+  .node-port.output-port { bottom: -8px; }
+  .node-port.active { border-color: var(--cyan); background: var(--cyan); box-shadow: 0 0 8px rgba(34,211,238,0.5); }
+  .node-port.done { border-color: var(--green); background: var(--green); }
+
+  /* Node body */
+  .node-body {
+    padding: 14px 16px;
+  }
+
+  /* Agent selector inside node */
+  .node-agent-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 10px;
+  }
+  .node-agent-select {
+    flex: 1;
+    padding: 6px 10px;
+    background: var(--bg); border: 1px solid #334; border-radius: 8px;
+    color: var(--text); font-family: 'Inter', sans-serif; font-size: 12px;
+    outline: none; cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394a3b8'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 30px;
+  }
+  .node-agent-select:focus { border-color: var(--accent1); }
+  .node-agent-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 7px; color: var(--text-dim);
+    white-space: nowrap;
+  }
+
+  .node-prompt {
+    width: 100%; min-height: 56px; padding: 10px;
+    background: var(--bg); border: 1px solid #334; border-radius: 8px;
+    color: var(--text); font-family: 'Inter', sans-serif; font-size: 13px;
+    resize: vertical; outline: none; line-height: 1.5;
+  }
+  .node-prompt:focus { border-color: var(--accent1); }
+  .node-prompt::placeholder { color: var(--text-dim); }
+
+  /* Skills & agents bar inside node */
+  .node-extras {
+    margin-top: 10px;
+  }
+  .node-extras summary {
+    cursor: pointer;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 7px; color: var(--text-dim);
+    user-select: none;
+    padding: 4px 0;
+  }
+  .node-extras-content {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    margin-top: 6px;
+    max-height: 150px; overflow-y: auto;
+  }
+  .node-skill-toggle {
+    display: flex; align-items: center; gap: 4px;
+    padding: 3px 8px;
+    background: var(--bg);
+    border: 1px solid #2a2a4a;
+    border-radius: 4px;
+    font-size: 9px;
+    font-family: 'Press Start 2P', monospace;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .node-skill-toggle:hover { border-color: var(--accent1); color: var(--text); }
+  .node-skill-toggle.active {
+    border-color: var(--green); color: var(--green);
+    background: rgba(74,222,128,0.08);
+  }
+
+  /* Connector line between nodes */
+  .pipeline-wire {
+    display: flex; flex-direction: column;
+    align-items: center;
+    padding: 0;
+    height: 40px;
+    position: relative;
+  }
+  .wire-line {
+    width: 2px;
+    flex: 1;
+    background: linear-gradient(180deg, #3a3a5a, #3a3a5a);
+    transition: background 0.3s;
+  }
+  .wire-arrow {
+    width: 0; height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 8px solid #3a3a5a;
+    transition: border-color 0.3s;
+  }
+  .pipeline-wire.active .wire-line {
+    background: linear-gradient(180deg, var(--cyan), var(--cyan));
+    box-shadow: 0 0 8px rgba(34,211,238,0.3);
+  }
+  .pipeline-wire.active .wire-arrow { border-top-color: var(--cyan); }
+  .pipeline-wire.done .wire-line {
+    background: linear-gradient(180deg, var(--green), var(--green));
+  }
+  .pipeline-wire.done .wire-arrow { border-top-color: var(--green); }
+
+  /* Data flow label on wire */
+  .wire-label {
+    position: absolute;
+    left: calc(50% + 14px);
+    top: 50%; transform: translateY(-50%);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 6px;
+    color: var(--text-dim);
+    background: var(--bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid #2a2a4a;
+    white-space: nowrap;
+  }
+
+  .step-remove {
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 6px; border: 1px solid transparent;
+    color: var(--red); cursor: pointer; font-size: 16px;
+    opacity: 0.6; transition: all 0.2s;
+  }
+  .step-remove:hover {
+    opacity: 1; background: rgba(248,113,113,0.15);
+    border-color: var(--red);
+  }
+
+  /* Step status during execution */
+  .step-status-indicator {
+    display: none;
+    align-items: center; gap: 8px;
+    margin-top: 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-family: 'Inter', sans-serif;
+  }
+  .step-status-indicator.visible { display: flex; }
+  .step-status-indicator.running {
+    background: rgba(34,211,238,0.08);
+    color: var(--cyan);
+  }
+  .step-status-indicator.complete {
+    background: rgba(74,222,128,0.08);
+    color: var(--green);
+  }
+  .step-status-indicator.error {
+    background: rgba(248,113,113,0.08);
+    color: var(--red);
+  }
+
+  /* Step terminal (activity feed per step) */
+  .step-terminal {
+    display: none;
+    margin-top: 10px;
+    max-height: 300px;
+    overflow-y: auto;
+    background: #0a0a14;
+    border: 1px solid #334;
+    border-radius: 8px;
+    padding: 10px;
+  }
+  .step-terminal.visible { display: block; }
+
   /* Responsive */
   @media (max-width: 900px) {
     .agent-lab { flex-direction: column; }
     .lab-sidebar { width: 100%; min-width: 0; }
+    .workflows-container { flex-direction: column; }
+    .wf-sidebar { width: 100%; min-width: 0; }
   }
 </style>
 </head>
@@ -790,7 +1231,8 @@
 <!-- Tab Navigation -->
 <div class="tab-nav">
   <button class="tab-btn active" onclick="switchTab('office')">OFFICE</button>
-  <button class="tab-btn" onclick="switchTab('lab')">AGENT LAB<span class="tab-badge">NEW</span></button>
+  <button class="tab-btn" onclick="switchTab('lab')">AGENT LAB</button>
+  <button class="tab-btn" onclick="switchTab('workflows')">WORKFLOWS<span class="tab-badge">NEW</span></button>
 </div>
 
 <!-- TAB 1: Office (existing) -->
@@ -807,8 +1249,50 @@
   <div class="agent-lab">
     <!-- Left: Agent type selector -->
     <div class="lab-sidebar">
-      <div class="lab-section-title">SELECT AGENT TYPE</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div class="lab-section-title">SELECT AGENT TYPE</div>
+        <button class="lab-btn primary" onclick="openCreateAgentModal()" style="padding:4px 10px;font-size:7px">+ CREATE</button>
+      </div>
       <div id="agentTypeList"></div>
+    </div>
+
+    <!-- Create Agent Modal (hidden) -->
+    <div class="modal-overlay" id="createAgentModal" style="display:none" onclick="if(event.target===this)closeCreateAgentModal()">
+      <div class="modal">
+        <div class="modal-title">CREATE CUSTOM AGENT</div>
+
+        <div class="modal-field">
+          <label>AGENT NAME</label>
+          <input type="text" id="customAgentName" placeholder="e.g., Data Pipeline Expert">
+          <div class="modal-hint">A short, descriptive name for your agent</div>
+        </div>
+
+        <div class="modal-field">
+          <label>EMOJI ICON</label>
+          <input type="text" id="customAgentEmoji" placeholder="e.g., &#x1F680;" style="width:80px">
+        </div>
+
+        <div class="modal-field">
+          <label>DESCRIPTION</label>
+          <textarea id="customAgentDesc" placeholder="What does this agent specialize in? What kind of tasks should it handle?"></textarea>
+        </div>
+
+        <div class="modal-field">
+          <label>SYSTEM INSTRUCTIONS <span style="color:var(--text-dim);font-family:Inter;font-size:11px">(optional — extra context prepended to every prompt)</span></label>
+          <textarea id="customAgentInstructions" placeholder="e.g., You are an expert in building ETL pipelines with Databricks. Always follow best practices for Delta Lake..." style="min-height:80px"></textarea>
+        </div>
+
+        <div class="modal-field">
+          <label>ASSIGNED SKILLS <span style="color:var(--text-dim);font-family:Inter;font-size:11px">(select skills this agent should use)</span></label>
+          <input type="text" class="modal-skill-search" id="modalSkillSearch" placeholder="FILTER SKILLS...">
+          <div class="modal-skill-picker" id="modalSkillPicker"></div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="lab-btn secondary" onclick="closeCreateAgentModal()">CANCEL</button>
+          <button class="lab-btn primary" id="modalSaveBtn" onclick="saveCustomAgent()">&#x2728; CREATE AGENT</button>
+        </div>
+      </div>
     </div>
 
     <!-- Center: Workbench -->
@@ -855,6 +1339,7 @@
       <!-- Actions -->
       <div class="lab-actions">
         <button class="lab-btn primary" onclick="launchAgent()" id="launchBtn">&#x1F680; LAUNCH AGENT</button>
+        <button class="lab-btn secondary" onclick="saveCurrentAsAgent()" title="Save current config as a reusable custom agent">&#x1F4BE; SAVE AS AGENT</button>
         <button class="lab-btn secondary" onclick="generateCommand()">PREVIEW COMMAND</button>
         <button class="lab-btn secondary" onclick="copyCommand()">COPY TO CLIPBOARD</button>
         <button class="lab-btn danger" onclick="clearLab()">CLEAR</button>
@@ -885,8 +1370,56 @@
   </div>
 </div>
 
+<!-- TAB 3: Workflows -->
+<div class="tab-content" id="tab-workflows">
+  <div class="workflows-container">
+    <!-- Left: Saved workflows -->
+    <div class="wf-sidebar">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div class="lab-section-title" style="color:var(--orange)">WORKFLOWS</div>
+        <button class="lab-btn primary" onclick="newWorkflow()" style="padding:4px 10px;font-size:7px">+ NEW</button>
+      </div>
+      <div id="wfList"></div>
+    </div>
+
+    <!-- Right: Pipeline builder -->
+    <div class="wf-main">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div>
+          <input type="text" id="wfName" placeholder="Workflow name..." style="background:transparent;border:none;font-family:'Press Start 2P',monospace;font-size:14px;color:var(--orange);outline:none;width:400px">
+          <div style="font-size:11px;color:var(--text-dim);font-family:Inter;margin-top:4px">
+            Each step's output feeds into the next as context. Assign agents &amp; skills per step.
+          </div>
+        </div>
+        <div class="lab-actions" style="margin:0">
+          <button class="lab-btn primary" onclick="runWorkflow()" id="runWfBtn" style="background:linear-gradient(135deg,var(--orange),var(--accent2))">&#x25B6; RUN</button>
+          <button class="lab-btn secondary" onclick="saveWorkflow()">&#x1F4BE; SAVE</button>
+          <button class="lab-btn danger" onclick="clearWorkflow()">CLEAR</button>
+        </div>
+      </div>
+
+      <!-- Pipeline canvas -->
+      <div class="pipeline-canvas">
+        <div class="pipeline-builder" id="pipelineBuilder">
+          <!-- Nodes injected by JS -->
+        </div>
+
+        <div style="display:flex;justify-content:center;margin-top:16px">
+          <button class="lab-btn secondary" onclick="addPipelineStep()" style="font-size:8px;border-style:dashed">+ ADD STEP</button>
+        </div>
+      </div>
+
+      <!-- Workflow execution log -->
+      <div id="wfExecutionStatus" style="display:none">
+        <div class="prompt-label" style="margin-bottom:8px">EXECUTION LOG</div>
+        <div class="terminal-output" id="wfTerminal" style="max-height:400px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="footer">
-  VIBE OFFICE v2.0 // Auto-generated from ~/.claude/plugins
+  VIBE OFFICE v3.0 // Auto-generated from ~/.claude/plugins
 </div>
 
 <div class="toast" id="toast">COPIED!</div>
@@ -1877,16 +2410,1260 @@ function renderHistory() {
   });
 }
 
+// =============================================
+// CUSTOM AGENT CREATION & EDITING
+// =============================================
+const CUSTOM_AGENTS_KEY = 'vibeOfficeCustomAgents';
+let modalSelectedSkills = []; // [{name, desc, type, plugin}]
+let editingAgentId = null; // null = creating, string = editing
+
+function loadCustomAgents() {
+  try {
+    return JSON.parse(localStorage.getItem(CUSTOM_AGENTS_KEY) || '[]');
+  } catch(e) { return []; }
+}
+
+function saveCustomAgentsToStorage(agents) {
+  localStorage.setItem(CUSTOM_AGENTS_KEY, JSON.stringify(agents));
+  // Also save to server file for persistence
+  syncCustomAgentsToServer(agents);
+}
+
+async function syncCustomAgentsToServer(agents) {
+  try {
+    await fetch('/api/custom-agents', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ action: 'save', agents }),
+    });
+  } catch(e) { /* server may not be running */ }
+}
+
+async function loadCustomAgentsFromServer() {
+  try {
+    const res = await fetch('/api/custom-agents', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ action: 'load' }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data.agents || [];
+    }
+  } catch(e) {}
+  return null; // fallback to localStorage
+}
+
+function openCreateAgentModal() {
+  editingAgentId = null;
+  modalSelectedSkills = [];
+  document.getElementById('customAgentName').value = '';
+  document.getElementById('customAgentEmoji').value = '';
+  document.getElementById('customAgentDesc').value = '';
+  document.getElementById('customAgentInstructions').value = '';
+  document.getElementById('modalSkillSearch').value = '';
+  document.getElementById('modalSaveBtn').innerHTML = '&#x2728; CREATE AGENT';
+  document.querySelector('.modal-title').textContent = 'CREATE CUSTOM AGENT';
+  renderModalSkillPicker();
+  document.getElementById('createAgentModal').style.display = 'flex';
+}
+
+function openEditAgentModal(customId, event) {
+  if (event) event.stopPropagation();
+
+  const agent = AGENT_TYPES.find(a => a.id === customId);
+  if (!agent) return;
+
+  editingAgentId = customId;
+  modalSelectedSkills = (agent.skills || []).map(s => ({ ...s }));
+
+  document.getElementById('customAgentName').value = agent.name;
+  document.getElementById('customAgentEmoji').value = agent.emoji || '';
+  document.getElementById('customAgentDesc').value = agent.desc || '';
+  document.getElementById('customAgentInstructions').value = agent.instructions || '';
+  document.getElementById('modalSkillSearch').value = '';
+  document.getElementById('modalSaveBtn').innerHTML = '&#x1F4BE; SAVE CHANGES';
+  document.querySelector('.modal-title').textContent = 'EDIT CUSTOM AGENT';
+
+  renderModalSkillPicker();
+  document.getElementById('createAgentModal').style.display = 'flex';
+}
+
+function closeCreateAgentModal() {
+  document.getElementById('createAgentModal').style.display = 'none';
+  editingAgentId = null;
+}
+
+function renderModalSkillPicker() {
+  const picker = document.getElementById('modalSkillPicker');
+  picker.innerHTML = '';
+
+  const items = [];
+  for (const [pluginName, data] of Object.entries(PLUGIN_DATA)) {
+    data.skills.forEach(s => {
+      const name = typeof s === 'object' ? s.name : s;
+      const desc = typeof s === 'object' ? s.desc : '';
+      items.push({ name, desc, type: 'skill', plugin: pluginName });
+    });
+    data.agents.forEach(a => {
+      const name = typeof a === 'object' ? a.name : a;
+      const desc = typeof a === 'object' ? a.desc : '';
+      items.push({ name, desc, type: 'agent', plugin: pluginName });
+    });
+  }
+  items.sort((a, b) => a.name.localeCompare(b.name));
+
+  items.forEach(item => {
+    const chip = document.createElement('div');
+    chip.className = 'modal-skill-chip';
+    chip.dataset.name = item.name;
+    chip.dataset.type = item.type;
+    chip.title = item.desc;
+    const isSelected = modalSelectedSkills.some(s => s.name === item.name && s.type === item.type);
+    if (isSelected) chip.classList.add('selected');
+    chip.innerHTML = `<span class="msc-emoji">${getEmoji(item.name)}</span>${item.name}`;
+    chip.onclick = () => {
+      const idx = modalSelectedSkills.findIndex(s => s.name === item.name && s.type === item.type);
+      if (idx >= 0) {
+        modalSelectedSkills.splice(idx, 1);
+        chip.classList.remove('selected');
+      } else {
+        modalSelectedSkills.push({ ...item });
+        chip.classList.add('selected');
+      }
+    };
+    picker.appendChild(chip);
+  });
+}
+
+// Modal skill search
+document.getElementById('modalSkillSearch').addEventListener('input', function() {
+  const q = this.value.toLowerCase().trim();
+  document.querySelectorAll('.modal-skill-chip').forEach(chip => {
+    const name = chip.dataset.name.toLowerCase();
+    chip.style.display = (!q || name.includes(q)) ? '' : 'none';
+  });
+});
+
+function saveCustomAgent() {
+  const name = document.getElementById('customAgentName').value.trim();
+  const emoji = document.getElementById('customAgentEmoji').value.trim() || '&#x1F916;';
+  const desc = document.getElementById('customAgentDesc').value.trim();
+  const instructions = document.getElementById('customAgentInstructions').value.trim();
+
+  if (!name) {
+    showToast('ENTER AN AGENT NAME');
+    return;
+  }
+
+  const customId = editingAgentId || ('custom-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
+
+  const agentData = {
+    id: customId,
+    name: name,
+    emoji: emoji,
+    desc: desc,
+    instructions: instructions,
+    skills: modalSelectedSkills.map(s => ({ name: s.name, desc: s.desc, type: s.type, plugin: s.plugin })),
+    tools: ["Bash","Read","Write","Edit","Glob","Grep","Agent","WebSearch","WebFetch","Skill","ToolSearch"],
+    excluded: [],
+    isCustom: true,
+  };
+
+  const existing = loadCustomAgents();
+
+  if (editingAgentId) {
+    // Update existing
+    const idx = existing.findIndex(a => a.id === editingAgentId);
+    if (idx >= 0) {
+      existing[idx] = agentData;
+    } else {
+      existing.push(agentData);
+    }
+
+    // Update in AGENT_TYPES
+    const atIdx = AGENT_TYPES.findIndex(a => a.id === editingAgentId);
+    if (atIdx >= 0) {
+      AGENT_TYPES[atIdx] = agentData;
+    }
+
+    // Update selectedAgentType if it's the one being edited
+    if (selectedAgentType && selectedAgentType.id === editingAgentId) {
+      selectedAgentType = agentData;
+      renderBundledSkills();
+    }
+
+    saveCustomAgentsToStorage(existing);
+    renderAgentTypes();
+    closeCreateAgentModal();
+    showToast('AGENT UPDATED!');
+  } else {
+    // Create new
+    if (existing.some(a => a.id === customId) || AGENT_TYPES.some(a => a.id === customId)) {
+      showToast('AGENT NAME ALREADY EXISTS');
+      return;
+    }
+
+    existing.push(agentData);
+    saveCustomAgentsToStorage(existing);
+    AGENT_TYPES.push(agentData);
+    renderAgentTypes();
+    closeCreateAgentModal();
+    showToast('AGENT CREATED!');
+    selectAgentType(customId);
+  }
+}
+
+function deleteCustomAgent(customId, event) {
+  if (event) event.stopPropagation();
+
+  const agents = loadCustomAgents().filter(a => a.id !== customId);
+  saveCustomAgentsToStorage(agents);
+
+  // Remove from AGENT_TYPES
+  const idx = AGENT_TYPES.findIndex(a => a.id === customId);
+  if (idx >= 0) AGENT_TYPES.splice(idx, 1);
+
+  // Deselect if currently selected
+  if (selectedAgentType && selectedAgentType.id === customId) {
+    selectedAgentType = null;
+    document.getElementById('workbenchTitle').textContent = 'CONFIGURE YOUR AGENT';
+    renderToolsLegend();
+    renderBundledSkills();
+  }
+
+  renderAgentTypes();
+  showToast('AGENT DELETED');
+}
+
+// Save current workbench config as a new custom agent
+function saveCurrentAsAgent() {
+  const taskPrompt = document.getElementById('taskPrompt').value.trim();
+  const baseAgent = selectedAgentType;
+
+  // Pre-fill the modal with current workbench state
+  editingAgentId = null;
+  modalSelectedSkills = assignedSkills.map(s => ({ ...s }));
+
+  // If we have a base agent with bundled skills, include those too
+  if (baseAgent && baseAgent.isCustom && baseAgent.skills) {
+    baseAgent.skills.forEach(s => {
+      if (!modalSelectedSkills.some(x => x.name === s.name && x.type === s.type)) {
+        modalSelectedSkills.push({ ...s });
+      }
+    });
+  }
+
+  // Auto-generate a name suggestion from the prompt
+  let suggestedName = '';
+  if (taskPrompt) {
+    // Take first ~40 chars of prompt as name suggestion
+    suggestedName = taskPrompt.substring(0, 40).replace(/[^a-zA-Z0-9 ]/g, '').trim();
+    if (taskPrompt.length > 40) suggestedName += '...';
+  }
+
+  document.getElementById('customAgentName').value = suggestedName;
+  document.getElementById('customAgentEmoji').value = baseAgent ? baseAgent.emoji || '' : '';
+  document.getElementById('customAgentDesc').value = baseAgent
+    ? `Based on ${baseAgent.name}. ${taskPrompt ? taskPrompt.substring(0, 100) : ''}`
+    : taskPrompt ? taskPrompt.substring(0, 100) : '';
+  document.getElementById('customAgentInstructions').value = taskPrompt;
+  document.getElementById('modalSkillSearch').value = '';
+  document.getElementById('modalSaveBtn').innerHTML = '&#x2728; CREATE AGENT';
+  document.querySelector('.modal-title').textContent = 'SAVE AS CUSTOM AGENT';
+
+  renderModalSkillPicker();
+  document.getElementById('createAgentModal').style.display = 'flex';
+}
+
+// Override launchAgent to inject custom agent instructions
+const _originalLaunchAgent = launchAgent;
+launchAgent = async function() {
+  if (!selectedAgentType) {
+    showToast('SELECT AN AGENT TYPE FIRST');
+    return;
+  }
+
+  const taskPrompt = document.getElementById('taskPrompt').value.trim();
+  if (!taskPrompt) {
+    showToast('ENTER A TASK PROMPT');
+    return;
+  }
+
+  const serverOk = await checkServer();
+  if (!serverOk) {
+    showServerStatus('SERVER NOT RUNNING. Start it with: python vibe-server.py', 'error');
+    return;
+  }
+
+  const agentType = selectedAgentType;
+
+  // Build prompt with custom instructions if present
+  let fullPrompt = '';
+  if (agentType.isCustom && agentType.instructions) {
+    fullPrompt += agentType.instructions + '\n\n';
+  }
+  fullPrompt += taskPrompt;
+
+  // Add assigned skills: merge custom agent's built-in skills + any extras from the palette
+  const allSkills = [];
+  if (agentType.isCustom && agentType.skills && agentType.skills.length > 0) {
+    agentType.skills.forEach(s => {
+      if (!allSkills.some(x => x.name === s.name)) allSkills.push(s);
+    });
+  }
+  assignedSkills.forEach(s => {
+    if (!allSkills.some(x => x.name === s.name)) allSkills.push(s);
+  });
+
+  if (allSkills.length > 0) {
+    fullPrompt += '\n\nYou have access to these skills — use them as needed:\n';
+    fullPrompt += allSkills.map(s => `- /${s.name} (${s.type}): ${s.desc}`).join('\n');
+  }
+
+  try {
+    const res = await fetch('/api/launch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        prompt: fullPrompt,
+        agent_type: agentType.id,
+        skills: allSkills,
+      })
+    });
+
+    const data = await res.json();
+    if (data.error) {
+      showToast('LAUNCH FAILED: ' + data.error);
+      return;
+    }
+
+    const agentId = data.agent_id;
+    const agentEmoji = agentType.emoji || '&#x1F916;';
+
+    runningAgents[agentId] = {
+      evtSource: null,
+      agentType: agentType.name,
+      prompt: taskPrompt,
+      toolCount: 0,
+      status: 'running',
+    };
+
+    agentHistory.push({
+      id: agentId,
+      agent_type: agentType.name,
+      prompt: taskPrompt.substring(0, 80),
+      status: 'running',
+      time: new Date().toLocaleTimeString(),
+    });
+
+    createAgentPanel(agentId, agentType.name.toUpperCase(), agentEmoji, taskPrompt);
+    updateRunningCount();
+    renderHistory();
+    showServerStatus(`${Object.keys(runningAgents).length} agent(s) running`, 'ok');
+
+    streamAgent(agentId);
+
+  } catch(e) {
+    showToast('LAUNCH FAILED: ' + e.message);
+  }
+};
+
+// Load custom agents on startup — try server file first, fallback to localStorage
+async function initCustomAgents() {
+  let custom = [];
+
+  // Try loading from server file
+  const serverAgents = await loadCustomAgentsFromServer();
+  if (serverAgents && serverAgents.length > 0) {
+    custom = serverAgents;
+    // Sync to localStorage as backup
+    localStorage.setItem(CUSTOM_AGENTS_KEY, JSON.stringify(custom));
+  } else {
+    custom = loadCustomAgents();
+    // If we have local agents but server doesn't, sync to server
+    if (custom.length > 0) {
+      syncCustomAgentsToServer(custom);
+    }
+  }
+
+  custom.forEach(a => {
+    a.isCustom = true; // ensure flag is set
+    if (!AGENT_TYPES.some(at => at.id === a.id)) {
+      AGENT_TYPES.push(a);
+    }
+  });
+}
+
+// Override renderAgentTypes to show custom badge and delete button
+const _origRenderAgentTypes = renderAgentTypes;
+renderAgentTypes = function() {
+  const list = document.getElementById('agentTypeList');
+  list.innerHTML = '';
+  AGENT_TYPES.forEach(at => {
+    const card = document.createElement('div');
+    card.className = 'agent-type-card';
+    card.dataset.id = at.id;
+    if (selectedAgentType && selectedAgentType.id === at.id) card.classList.add('selected');
+
+    let nameHtml = `${at.emoji} ${at.name}`;
+    if (at.isCustom) {
+      nameHtml += `<span class="custom-badge">CUSTOM</span>`;
+    }
+
+    let actionBtns = '';
+    if (at.isCustom) {
+      actionBtns = `<div style="float:right;display:flex;gap:4px">
+        <span class="custom-action-btn edit-btn" onclick="openEditAgentModal('${at.id}', event)" title="Edit this agent">&#x270F;&#xFE0F;</span>
+        <span class="custom-action-btn delete-btn" onclick="deleteCustomAgent('${at.id}', event)" title="Delete this agent">&#x1F5D1;</span>
+      </div>`;
+    }
+
+    let skillCount = '';
+    if (at.isCustom && at.skills && at.skills.length > 0) {
+      skillCount = `<div style="margin-top:6px;font-size:8px;font-family:'Press Start 2P',monospace;color:var(--accent1)">${at.skills.length} SKILLS ASSIGNED</div>`;
+    }
+
+    card.innerHTML = `
+      ${actionBtns}
+      <div class="agent-type-name">${nameHtml}</div>
+      <div class="agent-type-desc">${at.desc}</div>
+      ${skillCount}
+    `;
+    card.onclick = () => selectAgentType(at.id);
+    list.appendChild(card);
+  });
+};
+
+// Override renderBundledSkills to handle custom agents
+const _origRenderBundledSkills = renderBundledSkills;
+renderBundledSkills = function() {
+  const section = document.getElementById('bundledSkillsSection');
+  const bar = document.getElementById('bundledSkillsBar');
+
+  if (!selectedAgentType) {
+    section.style.display = 'none';
+    return;
+  }
+
+  // Custom agents show their assigned skills
+  if (selectedAgentType.isCustom) {
+    const skills = selectedAgentType.skills || [];
+    if (skills.length === 0) {
+      section.style.display = 'block';
+      bar.innerHTML = '<span style="color:var(--text-dim);font-size:10px;font-family:Inter">No skills assigned — add skills when editing or use the skill palette below</span>';
+      return;
+    }
+    section.style.display = 'block';
+    bar.innerHTML = skills.map(s => {
+      const emoji = getEmoji(s.name);
+      return `<div class="bundled-skill-chip" title="${escapeHtml(s.desc || '')}">
+        <span class="bsc-emoji">${emoji}</span>
+        <span>${s.name}</span>
+      </div>`;
+    }).join('');
+    return;
+  }
+
+  // Fall back to original logic for built-in agents
+  _origRenderBundledSkills();
+};
+
+// =============================================
+// WORKFLOWS
+// =============================================
+const WF_STORAGE_KEY = 'vibeOfficeWorkflows';
+let wfSteps = []; // [{name, prompt, skills, agentId}]
+let savedWorkflows = [];
+let selectedWorkflowIdx = -1;
+let activeWorkflowId = null;
+let activeWorkflowEvtSource = null;
+
+// Track running workflow status per workflow index
+// workflowRunStatus[idx] = {status:'running'|'done'|'error', wfId, steps, wfTermHtml}
+const workflowRunStatus = {};
+// Unsaved drafts: wfDrafts[idx] = {name, steps} — auto-saved on switch
+const wfDrafts = {};
+// Draft for "new" (unsaved) workflow
+let newWfDraft = null;
+
+// Collect all available skills for the step skill picker
+function getAllSkillItems() {
+  const items = [];
+  for (const [pluginName, data] of Object.entries(PLUGIN_DATA)) {
+    data.skills.forEach(s => {
+      const name = typeof s === 'object' ? s.name : s;
+      const desc = typeof s === 'object' ? s.desc : '';
+      items.push({ name, desc, type: 'skill', plugin: pluginName });
+    });
+  }
+  items.sort((a, b) => a.name.localeCompare(b.name));
+  return items;
+}
+
+function stashCurrentDraft() {
+  syncStepPrompts();
+  const draft = {
+    name: document.getElementById('wfName').value,
+    steps: wfSteps.map(s => ({ name: s.name, prompt: s.prompt, skills: [...s.skills], agentId: s.agentId })),
+  };
+  if (selectedWorkflowIdx >= 0) {
+    wfDrafts[selectedWorkflowIdx] = draft;
+  } else {
+    newWfDraft = draft;
+  }
+}
+
+function newWorkflow() {
+  stashCurrentDraft();
+  selectedWorkflowIdx = -1;
+
+  // Restore new draft if exists
+  if (newWfDraft && newWfDraft.steps.length > 0) {
+    document.getElementById('wfName').value = newWfDraft.name || '';
+    wfSteps = newWfDraft.steps.map(s => ({ ...s, skills: [...(s.skills || [])] }));
+  } else {
+    document.getElementById('wfName').value = '';
+    wfSteps = [];
+    addPipelineStep();
+    addPipelineStep();
+  }
+  document.getElementById('wfExecutionStatus').style.display = 'none';
+  renderPipeline();
+  renderWfList();
+}
+
+function addPipelineStep() {
+  wfSteps.push({
+    name: `Step ${wfSteps.length + 1}`,
+    prompt: '',
+    skills: [],
+    agentId: null,
+  });
+  renderPipeline();
+}
+
+function removePipelineStep(idx) {
+  if (wfSteps.length <= 1) {
+    showToast('NEED AT LEAST 1 STEP');
+    return;
+  }
+  wfSteps.splice(idx, 1);
+  // Renumber
+  wfSteps.forEach((s, i) => {
+    if (s.name.match(/^Step \d+$/)) s.name = `Step ${i + 1}`;
+  });
+  renderPipeline();
+}
+
+// Get all agent options (built-in + custom)
+function getAgentOptions() {
+  return AGENT_TYPES.map(at => ({
+    id: at.id,
+    name: at.name,
+    emoji: at.emoji,
+    isCustom: at.isCustom || false,
+    skills: at.skills || [],
+    instructions: at.instructions || '',
+  }));
+}
+
+function renderPipeline() {
+  const builder = document.getElementById('pipelineBuilder');
+  builder.innerHTML = '';
+
+  const allSkills = getAllSkillItems();
+  const agentOptions = getAgentOptions();
+
+  wfSteps.forEach((step, idx) => {
+    // Wire connector (except before first step)
+    if (idx > 0) {
+      const wireLabel = idx === 1 ? 'OUTPUT &#x2192; CONTEXT' : 'PASS THROUGH';
+      builder.innerHTML += `
+        <div class="pipeline-wire" id="connector-${idx}">
+          <div class="wire-line"></div>
+          <div class="wire-arrow"></div>
+          <div class="wire-label">${wireLabel}</div>
+        </div>`;
+    }
+
+    // Agent selector options
+    const agentSelectHtml = agentOptions.map(a =>
+      `<option value="${a.id}" ${step.agentId === a.id ? 'selected' : ''}>${a.name}${a.isCustom ? ' (custom)' : ''}</option>`
+    ).join('');
+
+    // Skills HTML
+    const skillsHtml = allSkills.map(s => {
+      const isActive = step.skills.some(ss => ss.name === s.name);
+      return `<div class="node-skill-toggle ${isActive ? 'active' : ''}"
+        onclick="toggleStepSkill(${idx}, '${s.name.replace(/'/g, "\\'")}', this)"
+        title="${escapeHtml(s.desc)}">${getEmoji(s.name)} ${s.name}</div>`;
+    }).join('');
+
+    // Agent badge
+    const selectedAgent = step.agentId ? agentOptions.find(a => a.id === step.agentId) : null;
+    const agentBadge = selectedAgent
+      ? `<span style="font-size:14px">${selectedAgent.emoji}</span>`
+      : `<span style="font-size:14px">&#x1F916;</span>`;
+
+    builder.innerHTML += `
+      <div class="pipeline-node" id="step-${idx}">
+        ${idx > 0 ? '<div class="node-port input-port" id="port-in-' + idx + '"></div>' : ''}
+        <div class="node-topbar">
+          <div class="node-topbar-left">
+            <div class="node-number">${idx + 1}</div>
+            <input type="text" class="node-name-input" value="${escapeHtml(step.name)}"
+              onchange="wfSteps[${idx}].name = this.value" placeholder="Step name...">
+          </div>
+          <div class="node-topbar-right">
+            ${agentBadge}
+            <div class="step-remove" onclick="removePipelineStep(${idx})" title="Remove step">&times;</div>
+          </div>
+        </div>
+        <div class="node-body">
+          <div class="node-agent-row">
+            <span class="node-agent-label">AGENT</span>
+            <select class="node-agent-select" onchange="setStepAgent(${idx}, this.value)">
+              <option value="">-- No agent (general) --</option>
+              ${agentSelectHtml}
+            </select>
+          </div>
+          <textarea class="node-prompt" placeholder="What should this step do?&#10;${idx > 0 ? '(receives output from Step ' + idx + ' as context)' : '(first step — starts the pipeline)'}"
+            onchange="wfSteps[${idx}].prompt = this.value">${escapeHtml(step.prompt)}</textarea>
+          <div class="node-extras">
+            <details>
+              <summary>SKILLS &amp; TOOLS (${step.skills.length} selected)</summary>
+              <div class="node-extras-content">${skillsHtml}</div>
+            </details>
+          </div>
+          <div class="step-status-indicator" id="step-status-${idx}"></div>
+          <div class="step-terminal" id="step-term-${idx}"></div>
+        </div>
+        ${idx < wfSteps.length - 1 ? '<div class="node-port output-port" id="port-out-' + idx + '"></div>' : '<div class="node-port output-port" id="port-out-' + idx + '" style="border-style:dashed"></div>'}
+      </div>`;
+  });
+}
+
+function setStepAgent(stepIdx, agentId) {
+  wfSteps[stepIdx].agentId = agentId || null;
+  // If agent has bundled skills, auto-add them
+  if (agentId) {
+    const agent = AGENT_TYPES.find(a => a.id === agentId);
+    if (agent && agent.isCustom && agent.skills) {
+      agent.skills.forEach(s => {
+        if (!wfSteps[stepIdx].skills.some(ss => ss.name === s.name)) {
+          wfSteps[stepIdx].skills.push({ ...s });
+        }
+      });
+    }
+  }
+  renderPipeline();
+}
+
+function toggleStepSkill(stepIdx, skillName, el) {
+  const step = wfSteps[stepIdx];
+  const allSkills = getAllSkillItems();
+  const skill = allSkills.find(s => s.name === skillName);
+  if (!skill) return;
+
+  const idx = step.skills.findIndex(s => s.name === skillName);
+  if (idx >= 0) {
+    step.skills.splice(idx, 1);
+    el.classList.remove('active');
+  } else {
+    step.skills.push({ ...skill });
+    el.classList.add('active');
+  }
+
+  // Update summary count
+  const details = el.closest('details');
+  if (details) {
+    const summary = details.querySelector('summary');
+    summary.textContent = `SKILLS (${step.skills.length} selected)`;
+  }
+}
+
+function saveWorkflow() {
+  const name = document.getElementById('wfName').value.trim();
+  if (!name) {
+    showToast('ENTER A WORKFLOW NAME');
+    return;
+  }
+
+  // Sync prompts from textareas
+  syncStepPrompts();
+
+  const wfData = {
+    name,
+    steps: wfSteps.map(s => ({ name: s.name, prompt: s.prompt, skills: s.skills, agentId: s.agentId || null })),
+    createdAt: new Date().toISOString(),
+  };
+
+  if (selectedWorkflowIdx >= 0) {
+    savedWorkflows[selectedWorkflowIdx] = wfData;
+  } else {
+    savedWorkflows.push(wfData);
+    selectedWorkflowIdx = savedWorkflows.length - 1;
+  }
+
+  persistWorkflows();
+  renderWfList();
+  showToast('WORKFLOW SAVED!');
+}
+
+function syncStepPrompts() {
+  document.querySelectorAll('.node-prompt').forEach((ta, idx) => {
+    if (wfSteps[idx]) wfSteps[idx].prompt = ta.value;
+  });
+  document.querySelectorAll('.node-name-input').forEach((inp, idx) => {
+    if (wfSteps[idx]) wfSteps[idx].name = inp.value;
+  });
+  document.querySelectorAll('.node-agent-select').forEach((sel, idx) => {
+    if (wfSteps[idx]) wfSteps[idx].agentId = sel.value || null;
+  });
+}
+
+function loadWorkflow(idx) {
+  const wf = savedWorkflows[idx];
+  if (!wf) return;
+
+  // Stash current before switching
+  stashCurrentDraft();
+
+  selectedWorkflowIdx = idx;
+
+  // Use draft if available, otherwise use saved
+  const source = wfDrafts[idx] || wf;
+  document.getElementById('wfName').value = source.name;
+  wfSteps = source.steps.map(s => ({
+    name: s.name,
+    prompt: s.prompt,
+    skills: (s.skills || []).map(sk => ({ ...sk })),
+    agentId: s.agentId || null,
+  }));
+
+  // Show/hide execution log for this workflow
+  const runInfo = workflowRunStatus[idx];
+  const wfExec = document.getElementById('wfExecutionStatus');
+  const wfTerm = document.getElementById('wfTerminal');
+  if (runInfo && runInfo.wfTermHtml) {
+    wfExec.style.display = 'block';
+    wfTerm.innerHTML = runInfo.wfTermHtml;
+  } else {
+    wfExec.style.display = 'none';
+  }
+
+  renderPipeline();
+
+  // Restore step terminal HTML and statuses if this workflow ran
+  if (runInfo && runInfo.stepStates) {
+    runInfo.stepStates.forEach((ss, i) => {
+      const stepEl = document.getElementById(`step-${i}`);
+      const statusEl = document.getElementById(`step-status-${i}`);
+      const termEl = document.getElementById(`step-term-${i}`);
+      if (ss.nodeClass && stepEl) stepEl.className = ss.nodeClass;
+      if (ss.statusHtml && statusEl) {
+        statusEl.className = ss.statusClass || 'step-status-indicator visible';
+        statusEl.innerHTML = ss.statusHtml;
+      }
+      if (ss.termHtml && termEl) {
+        termEl.className = 'step-terminal visible';
+        termEl.innerHTML = ss.termHtml;
+      }
+      // Ports + wires
+      const conn = document.getElementById(`connector-${i}`);
+      if (conn && ss.wireClass) conn.className = ss.wireClass;
+      const portIn = document.getElementById(`port-in-${i}`);
+      const portOut = document.getElementById(`port-out-${i}`);
+      if (portIn && ss.portInClass) portIn.className = ss.portInClass;
+      if (portOut && ss.portOutClass) portOut.className = ss.portOutClass;
+    });
+  }
+
+  renderWfList();
+}
+
+function deleteWorkflow(idx, event) {
+  if (event) event.stopPropagation();
+  savedWorkflows.splice(idx, 1);
+  if (selectedWorkflowIdx === idx) {
+    selectedWorkflowIdx = -1;
+    newWorkflow();
+  } else if (selectedWorkflowIdx > idx) {
+    selectedWorkflowIdx--;
+  }
+  persistWorkflows();
+  renderWfList();
+  showToast('WORKFLOW DELETED');
+}
+
+function renderWfList() {
+  const list = document.getElementById('wfList');
+  list.innerHTML = '';
+
+  if (savedWorkflows.length === 0) {
+    list.innerHTML = '<div style="color:var(--text-dim);font-size:11px;padding:12px;text-align:center;font-family:Inter">No saved workflows yet. Click + NEW to create one.</div>';
+    return;
+  }
+
+  savedWorkflows.forEach((wf, idx) => {
+    const card = document.createElement('div');
+    card.className = `wf-card${idx === selectedWorkflowIdx ? ' selected' : ''}`;
+
+    // Status icon
+    const runInfo = workflowRunStatus[idx];
+    let statusIcon = '&#x1F504;'; // default: loop icon
+    let statusBorder = '';
+    if (runInfo) {
+      if (runInfo.status === 'running') {
+        statusIcon = '<span style="display:inline-block;width:12px;height:12px;border:2px solid var(--cyan);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;vertical-align:middle"></span>';
+        statusBorder = 'border-left: 3px solid var(--cyan);';
+      } else if (runInfo.status === 'done') {
+        statusIcon = '&#x2705;';
+        statusBorder = 'border-left: 3px solid var(--green);';
+      } else if (runInfo.status === 'error') {
+        statusIcon = '&#x274C;';
+        statusBorder = 'border-left: 3px solid var(--red);';
+      } else if (runInfo.status === 'stopped') {
+        statusIcon = '&#x1F6D1;';
+        statusBorder = 'border-left: 3px solid var(--text-dim);';
+      }
+    }
+
+    card.style.cssText = statusBorder;
+
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <div class="wf-card-name">${statusIcon} ${escapeHtml(wf.name)}</div>
+        <div style="display:flex;gap:4px">
+          <span class="custom-action-btn edit-btn" onclick="loadWorkflow(${idx}); event.stopPropagation()" title="Edit" style="width:24px;height:24px;font-size:13px">&#x270F;&#xFE0F;</span>
+          <span class="custom-action-btn delete-btn" onclick="deleteWorkflow(${idx}, event)" title="Delete" style="width:24px;height:24px;font-size:13px">&#x1F5D1;</span>
+        </div>
+      </div>
+      <div class="wf-card-steps">${wf.steps.length} STEPS${runInfo ? ' — ' + runInfo.status.toUpperCase() : ''}</div>
+      <div class="wf-card-desc">${wf.steps.map(s => s.name).join(' → ')}</div>
+    `;
+    card.onclick = () => loadWorkflow(idx);
+    list.appendChild(card);
+  });
+}
+
+function persistWorkflows() {
+  localStorage.setItem(WF_STORAGE_KEY, JSON.stringify(savedWorkflows));
+  // Also save to server
+  fetch('/api/workflows', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ action: 'save', workflows: savedWorkflows }),
+  }).catch(() => {});
+}
+
+async function loadWorkflowsFromStorage() {
+  // Try server first
+  try {
+    const res = await fetch('/api/workflows', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ action: 'load' }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.workflows && data.workflows.length > 0) {
+        savedWorkflows = data.workflows;
+        localStorage.setItem(WF_STORAGE_KEY, JSON.stringify(savedWorkflows));
+        return;
+      }
+    }
+  } catch(e) {}
+
+  // Fallback to localStorage
+  try {
+    savedWorkflows = JSON.parse(localStorage.getItem(WF_STORAGE_KEY) || '[]');
+  } catch(e) { savedWorkflows = []; }
+}
+
+async function runWorkflow() {
+  syncStepPrompts();
+
+  const validSteps = wfSteps.filter(s => s.prompt.trim());
+  if (validSteps.length === 0) {
+    showToast('ADD PROMPTS TO YOUR STEPS');
+    return;
+  }
+
+  const serverOk = await checkServer();
+  if (!serverOk) {
+    showToast('SERVER NOT RUNNING');
+    return;
+  }
+
+  // Reset step statuses
+  wfSteps.forEach((s, i) => {
+    const statusEl = document.getElementById(`step-status-${i}`);
+    const termEl = document.getElementById(`step-term-${i}`);
+    const stepEl = document.getElementById(`step-${i}`);
+    if (statusEl) { statusEl.className = 'step-status-indicator'; statusEl.innerHTML = ''; }
+    if (termEl) { termEl.className = 'step-terminal'; termEl.innerHTML = ''; }
+    if (stepEl) { stepEl.className = 'pipeline-step'; }
+    const conn = document.getElementById(`connector-${i}`);
+    if (conn) conn.className = 'pipeline-connector';
+  });
+
+  // Show execution section
+  document.getElementById('wfExecutionStatus').style.display = 'block';
+  const wfTerm = document.getElementById('wfTerminal');
+  wfTerm.innerHTML = '<span class="terminal-cursor"></span>';
+
+  const wfName = document.getElementById('wfName').value.trim() || 'Workflow';
+
+  // Build steps with agent instructions injected
+  const stepsPayload = wfSteps.map(s => {
+    let prompt = '';
+    if (s.agentId) {
+      const agent = AGENT_TYPES.find(a => a.id === s.agentId);
+      if (agent && agent.isCustom && agent.instructions) {
+        prompt += agent.instructions + '\n\n';
+      }
+    }
+    prompt += s.prompt;
+
+    // Merge agent skills + step skills
+    const allSkills = [...(s.skills || [])];
+    if (s.agentId) {
+      const agent = AGENT_TYPES.find(a => a.id === s.agentId);
+      if (agent && agent.isCustom && agent.skills) {
+        agent.skills.forEach(sk => {
+          if (!allSkills.some(x => x.name === sk.name)) allSkills.push(sk);
+        });
+      }
+    }
+    return { name: s.name, prompt, skills: allSkills };
+  });
+
+  try {
+    const res = await fetch('/api/workflow/launch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        name: wfName,
+        steps: stepsPayload,
+      }),
+    });
+
+    const data = await res.json();
+    if (data.error) {
+      showToast('LAUNCH FAILED: ' + data.error);
+      return;
+    }
+
+    activeWorkflowId = data.workflow_id;
+    document.getElementById('runWfBtn').innerHTML = '&#x23F8; RUNNING...';
+    document.getElementById('runWfBtn').disabled = true;
+
+    // Track this run
+    if (selectedWorkflowIdx >= 0) {
+      workflowRunStatus[selectedWorkflowIdx] = {
+        status: 'running',
+        wfId: data.workflow_id,
+        wfTermHtml: '',
+        stepStates: wfSteps.map(() => ({})),
+        ownerIdx: selectedWorkflowIdx,
+      };
+      renderWfList();
+    }
+
+    streamWorkflow(data.workflow_id, selectedWorkflowIdx);
+
+  } catch(e) {
+    showToast('LAUNCH FAILED: ' + e.message);
+  }
+}
+
+function streamWorkflow(wfId, ownerIdx) {
+  const wfTerm = document.getElementById('wfTerminal');
+  const evtSource = new EventSource(`/api/workflow/stream/${wfId}`);
+  activeWorkflowEvtSource = evtSource;
+
+  // Helper: save step DOM state to workflowRunStatus for restoration when switching back
+  function snapshotStepState(stepIdx) {
+    if (ownerIdx < 0 || !workflowRunStatus[ownerIdx]) return;
+    const ss = workflowRunStatus[ownerIdx].stepStates;
+    if (!ss[stepIdx]) ss[stepIdx] = {};
+    const stepEl = document.getElementById(`step-${stepIdx}`);
+    const statusEl = document.getElementById(`step-status-${stepIdx}`);
+    const termEl = document.getElementById(`step-term-${stepIdx}`);
+    const conn = document.getElementById(`connector-${stepIdx}`);
+    const portIn = document.getElementById(`port-in-${stepIdx}`);
+    const portOut = document.getElementById(`port-out-${stepIdx}`);
+    if (stepEl) ss[stepIdx].nodeClass = stepEl.className;
+    if (statusEl) { ss[stepIdx].statusClass = statusEl.className; ss[stepIdx].statusHtml = statusEl.innerHTML; }
+    if (termEl) ss[stepIdx].termHtml = termEl.innerHTML;
+    if (conn) ss[stepIdx].wireClass = conn.className;
+    if (portIn) ss[stepIdx].portInClass = portIn.className;
+    if (portOut) ss[stepIdx].portOutClass = portOut.className;
+  }
+
+  function snapshotWfTerm() {
+    if (ownerIdx >= 0 && workflowRunStatus[ownerIdx]) {
+      workflowRunStatus[ownerIdx].wfTermHtml = wfTerm.innerHTML;
+    }
+  }
+
+  evtSource.onmessage = function(event) {
+    const msg = JSON.parse(event.data);
+    // Check if we're still viewing this workflow
+    const isViewing = selectedWorkflowIdx === ownerIdx;
+
+    if (msg.type === 'step_start') {
+      const stepIdx = msg.step;
+      if (isViewing) {
+        const stepEl = document.getElementById(`step-${stepIdx}`);
+        const statusEl = document.getElementById(`step-status-${stepIdx}`);
+        const termEl = document.getElementById(`step-term-${stepIdx}`);
+
+        if (stepEl) stepEl.classList.add('active-step');
+        if (statusEl) {
+          statusEl.className = 'step-status-indicator visible running';
+          statusEl.innerHTML = '<div class="ae-spinner" style="width:14px;height:14px"></div> Running...';
+        }
+        if (termEl) {
+          termEl.className = 'step-terminal visible';
+          termEl.innerHTML = '<span class="terminal-cursor"></span>';
+        }
+
+        if (stepIdx > 0) {
+          const conn = document.getElementById(`connector-${stepIdx}`);
+          if (conn) conn.classList.add('active');
+        }
+        const portIn = document.getElementById(`port-in-${stepIdx}`);
+        const portOut = document.getElementById(`port-out-${stepIdx}`);
+        if (portIn) portIn.classList.add('active');
+        if (portOut) portOut.classList.add('active');
+
+        addWfLogEvent(wfTerm, `
+          <div class="activity-event activity-init">
+            <div class="ae-icon">&#x25B6;</div>
+            <div class="ae-body">
+              <div class="ae-title">Step ${stepIdx + 1}: ${escapeHtml(msg.name)}</div>
+              <div class="ae-detail">Starting step ${stepIdx + 1} of ${msg.total}</div>
+            </div>
+          </div>`);
+        snapshotStepState(stepIdx);
+        snapshotWfTerm();
+      }
+    }
+
+    else if (msg.type === 'step_complete') {
+      const stepIdx = msg.step;
+      if (isViewing) {
+        const stepEl = document.getElementById(`step-${stepIdx}`);
+        const statusEl = document.getElementById(`step-status-${stepIdx}`);
+        if (stepEl) { stepEl.classList.remove('active-step'); stepEl.classList.add('done-step'); }
+        if (statusEl) {
+          statusEl.className = 'step-status-indicator visible complete';
+          statusEl.innerHTML = '&#x2705; Complete';
+        }
+        if (stepIdx > 0) {
+          const conn = document.getElementById(`connector-${stepIdx}`);
+          if (conn) { conn.classList.remove('active'); conn.classList.add('done'); }
+        }
+        const portIn = document.getElementById(`port-in-${stepIdx}`);
+        const portOut = document.getElementById(`port-out-${stepIdx}`);
+        if (portIn) { portIn.classList.remove('active'); portIn.classList.add('done'); }
+        if (portOut) { portOut.classList.remove('active'); portOut.classList.add('done'); }
+
+        addWfLogEvent(wfTerm, `
+          <div class="activity-event activity-result">
+            <div class="ae-icon">&#x2705;</div>
+            <div class="ae-body">
+              <div class="ae-title">Step ${stepIdx + 1} complete: ${escapeHtml(msg.name)}</div>
+              ${msg.result_preview ? `<div class="ae-detail" style="margin-top:4px">${escapeHtml(msg.result_preview.substring(0, 200))}${msg.result_preview.length > 200 ? '...' : ''}</div>` : ''}
+            </div>
+          </div>`);
+        snapshotStepState(stepIdx);
+        snapshotWfTerm();
+      } else {
+        // Not viewing but update cached state
+        if (workflowRunStatus[ownerIdx] && workflowRunStatus[ownerIdx].stepStates[msg.step]) {
+          workflowRunStatus[ownerIdx].stepStates[msg.step].nodeClass = 'pipeline-node done-step';
+          workflowRunStatus[ownerIdx].stepStates[msg.step].statusClass = 'step-status-indicator visible complete';
+          workflowRunStatus[ownerIdx].stepStates[msg.step].statusHtml = '&#x2705; Complete';
+        }
+      }
+    }
+
+    else if (msg.type === 'step_error') {
+      const stepIdx = msg.step;
+      if (isViewing) {
+        const stepEl = document.getElementById(`step-${stepIdx}`);
+        const statusEl = document.getElementById(`step-status-${stepIdx}`);
+        if (stepEl) { stepEl.classList.remove('active-step'); stepEl.classList.add('error-step'); }
+        if (statusEl) {
+          statusEl.className = 'step-status-indicator visible error';
+          statusEl.innerHTML = '&#x274C; Error: ' + escapeHtml(msg.error);
+        }
+        addWfLogEvent(wfTerm, `
+          <div class="activity-event activity-error">
+            <div class="ae-icon">&#x274C;</div>
+            <div class="ae-body">
+              <div class="ae-title">Step ${stepIdx + 1} failed: ${escapeHtml(msg.name)}</div>
+              <div class="ae-detail">${escapeHtml(msg.error)}</div>
+            </div>
+          </div>`);
+        snapshotStepState(stepIdx);
+        snapshotWfTerm();
+      }
+    }
+
+    // Per-step streaming events
+    else if (msg.step !== undefined && isViewing) {
+      const termEl = document.getElementById(`step-term-${msg.step}`);
+      if (termEl) {
+        if (msg.type === 'init') {
+          addStepEvent(termEl, `
+            <div class="activity-event activity-init" style="padding:4px 8px;margin-bottom:4px">
+              <div class="ae-icon" style="font-size:12px">&#x1F680;</div>
+              <div class="ae-body"><div class="ae-detail">Initialized | ${msg.tools ? msg.tools.length : 0} tools</div></div>
+            </div>`);
+        }
+        else if (msg.type === 'tool_call') {
+          addStepEvent(termEl, `
+            <div class="activity-event activity-tool" style="padding:4px 8px;margin-bottom:4px">
+              <div class="ae-icon" style="font-size:12px">${getToolIcon(msg.tool)}</div>
+              <div class="ae-body"><div class="ae-detail"><span style="color:var(--cyan)">${msg.tool}</span> ${escapeHtml(msg.summary)}</div></div>
+              <div class="ae-spinner" style="width:12px;height:12px"></div>
+            </div>`);
+        }
+        else if (msg.type === 'text') {
+          addStepEvent(termEl, `
+            <div class="activity-event activity-text" style="padding:4px 8px;margin-bottom:4px">
+              <div class="ae-icon" style="font-size:12px">&#x1F4AC;</div>
+              <div class="ae-body"><div class="ae-detail">${escapeHtml(msg.data).substring(0, 300)}</div></div>
+            </div>`);
+        }
+        else if (msg.type === 'result') {
+          addStepEvent(termEl, `
+            <div class="activity-event activity-result" style="padding:4px 8px;margin-bottom:4px">
+              <div class="ae-icon" style="font-size:12px">&#x1F3C1;</div>
+              <div class="ae-body"><div class="ae-detail">${msg.num_turns} turns | ${msg.cost ? '$' + msg.cost.toFixed(4) : ''}</div></div>
+            </div>`);
+        }
+        snapshotStepState(msg.step);
+      }
+    }
+
+    else if (msg.type === 'workflow_status') {
+      if (ownerIdx >= 0 && workflowRunStatus[ownerIdx]) {
+        workflowRunStatus[ownerIdx].status = msg.status;
+        renderWfList();
+      }
+      if (isViewing && (msg.status === 'done' || msg.status === 'error' || msg.status === 'stopped')) {
+        addWfLogEvent(wfTerm, `
+          <div class="activity-event ${msg.status === 'done' ? 'activity-result' : 'activity-error'}">
+            <div class="ae-icon">${msg.status === 'done' ? '&#x1F3C6;' : '&#x26A0;'}</div>
+            <div class="ae-body">
+              <div class="ae-title">Workflow ${msg.status.toUpperCase()}</div>
+            </div>
+          </div>`);
+        snapshotWfTerm();
+      }
+    }
+
+    else if (msg.type === 'done') {
+      evtSource.close();
+      activeWorkflowEvtSource = null;
+      activeWorkflowId = null;
+      if (isViewing) {
+        document.getElementById('runWfBtn').innerHTML = '&#x25B6; RUN';
+        document.getElementById('runWfBtn').disabled = false;
+        const cursor = wfTerm.querySelector('.terminal-cursor');
+        if (cursor) cursor.remove();
+        snapshotWfTerm();
+      }
+      if (ownerIdx >= 0 && workflowRunStatus[ownerIdx]) {
+        if (workflowRunStatus[ownerIdx].status === 'running') {
+          workflowRunStatus[ownerIdx].status = 'done';
+        }
+        renderWfList();
+      }
+    }
+  };
+
+  evtSource.onerror = function() {
+    evtSource.close();
+    activeWorkflowEvtSource = null;
+    if (selectedWorkflowIdx === ownerIdx) {
+      document.getElementById('runWfBtn').innerHTML = '&#x25B6; RUN';
+      document.getElementById('runWfBtn').disabled = false;
+    }
+    if (ownerIdx >= 0 && workflowRunStatus[ownerIdx]) {
+      workflowRunStatus[ownerIdx].status = 'error';
+      renderWfList();
+    }
+  };
+}
+
+function addWfLogEvent(termEl, html) {
+  clearPendingSpinners(termEl);
+  const cursor = termEl.querySelector('.terminal-cursor');
+  if (cursor) cursor.remove();
+  termEl.insertAdjacentHTML('beforeend', html);
+  termEl.insertAdjacentHTML('beforeend', '<span class="terminal-cursor"></span>');
+  termEl.scrollTop = termEl.scrollHeight;
+}
+
+function addStepEvent(termEl, html) {
+  // Clear spinners from previous tool calls in this step
+  termEl.querySelectorAll('.ae-spinner').forEach(s => {
+    s.innerHTML = '&#x2705;';
+    s.classList.remove('ae-spinner');
+    s.classList.add('ae-done');
+    s.style.width = 'auto'; s.style.height = 'auto';
+    s.style.border = 'none'; s.style.animation = 'none';
+  });
+  termEl.insertAdjacentHTML('beforeend', html);
+  termEl.scrollTop = termEl.scrollHeight;
+}
+
+function clearWorkflow() {
+  if (activeWorkflowEvtSource) {
+    activeWorkflowEvtSource.close();
+    activeWorkflowEvtSource = null;
+  }
+  if (activeWorkflowId) {
+    fetch('/api/workflow/stop', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ workflow_id: activeWorkflowId }),
+    }).catch(() => {});
+    activeWorkflowId = null;
+  }
+  document.getElementById('runWfBtn').innerHTML = '&#x25B6; RUN WORKFLOW';
+  document.getElementById('runWfBtn').disabled = false;
+  document.getElementById('wfExecutionStatus').style.display = 'none';
+  newWorkflow();
+}
+
 // Check server on load
 checkServer();
 
 // =============================================
 // INIT
 // =============================================
-render();
-renderAgentTypes();
-renderPalette();
-renderToolsLegend();
+(async function() {
+  await initCustomAgents();
+  await loadWorkflowsFromStorage();
+  render();
+  renderAgentTypes();
+  renderPalette();
+  renderToolsLegend();
+  renderWfList();
+  // Initialize with 2 empty steps
+  if (wfSteps.length === 0) {
+    addPipelineStep();
+    addPipelineStep();
+  }
+})();
 </script>
 </body>
 </html>

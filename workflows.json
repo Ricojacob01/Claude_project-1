@@ -1,0 +1,44 @@
+[
+  {
+    "name": "test1",
+    "steps": [
+      {
+        "name": "Step 1",
+        "prompt": "give the 10 databricks products",
+        "skills": [],
+        "agentId": "Explore"
+      },
+      {
+        "name": "Step 2",
+        "prompt": "give a definition of those products",
+        "skills": [],
+        "agentId": "Explore"
+      },
+      {
+        "name": "Step 3",
+        "prompt": "give an example use case for those products ",
+        "skills": [],
+        "agentId": "Explore"
+      }
+    ],
+    "createdAt": "2026-03-12T21:39:13.781Z"
+  },
+  {
+    "name": "test 2",
+    "steps": [
+      {
+        "name": "Step 1",
+        "prompt": "",
+        "skills": [],
+        "agentId": null
+      },
+      {
+        "name": "Step 2",
+        "prompt": "",
+        "skills": [],
+        "agentId": null
+      }
+    ],
+    "createdAt": "2026-03-12T21:21:55.036Z"
+  }
+]

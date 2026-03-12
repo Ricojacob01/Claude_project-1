@@ -1,0 +1,38 @@
+[
+  {
+    "id": "custom-text-to-human-text",
+    "name": "Text to human text",
+    "emoji": "\ud83d\udcac",
+    "desc": "Turns text into human text and creates a video",
+    "instructions": "",
+    "skills": [
+      {
+        "name": "humanize",
+        "desc": "Rewrite AI-generated text to sound like a real human wrote it. Uses your personal voice profile (~/.vibe/voice_profile.yaml) for tone, style, and banned-phrase enforcement. Run with --setup to build or edit your voice profile.",
+        "type": "skill",
+        "plugin": "fe-workflows"
+      },
+      {
+        "name": "showcase",
+        "desc": "Document and share a Vibe session as a showcase writeup. Creates a Google Doc in the shared Vibe Showcases folder. Use this skill when the user says \"showcase\", \"writeup\", \"document this session\", or wants to share what they accomplished with Vibe.",
+        "type": "skill",
+        "plugin": "fe-workflows"
+      }
+    ],
+    "tools": [
+      "Bash",
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "Agent",
+      "WebSearch",
+      "WebFetch",
+      "Skill",
+      "ToolSearch"
+    ],
+    "excluded": [],
+    "isCustom": true
+  }
+]

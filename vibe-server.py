@@ -16,6 +16,7 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse
 
 PORT = int(os.environ.get("VIBE_PORT", 5555))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Find claude CLI
 CLAUDE_BIN = None
@@ -42,51 +43,64 @@ active_agents = {}
 agent_counter = 0
 agent_lock = threading.Lock()
 
+# Active workflows
+active_workflows = {}
+workflow_counter = 0
+workflow_lock = threading.Lock()
 
-def parse_stream_event(line, q):
+
+def parse_stream_event(line, q, step_idx=None):
     """Parse a stream-json line from claude CLI and emit UI-friendly events."""
     try:
         evt = json.loads(line)
     except json.JSONDecodeError:
-        q.put({"type": "raw", "data": line})
+        msg = {"type": "raw", "data": line}
+        if step_idx is not None:
+            msg["step"] = step_idx
+        q.put(msg)
         return
 
     evt_type = evt.get("type", "")
 
     if evt_type == "system" and evt.get("subtype") == "init":
-        q.put({
+        msg = {
             "type": "init",
             "model": evt.get("model", ""),
             "tools": evt.get("tools", []),
             "session_id": evt.get("session_id", ""),
             "mcp_servers": evt.get("mcp_servers", []),
-        })
+        }
+        if step_idx is not None:
+            msg["step"] = step_idx
+        q.put(msg)
 
     elif evt_type == "assistant":
-        msg = evt.get("message", {})
-        content_blocks = msg.get("content", [])
+        content_blocks = evt.get("message", {}).get("content", [])
 
         for block in content_blocks:
             if block.get("type") == "text":
                 text = block.get("text", "")
                 if text.strip():
-                    q.put({"type": "text", "data": text})
+                    msg = {"type": "text", "data": text}
+                    if step_idx is not None:
+                        msg["step"] = step_idx
+                    q.put(msg)
 
             elif block.get("type") == "tool_use":
                 tool_name = block.get("name", "unknown")
                 tool_input = block.get("input", {})
                 tool_id = block.get("id", "")
-
-                # Build a human-readable summary
                 summary = summarize_tool_call(tool_name, tool_input)
-
-                q.put({
+                msg = {
                     "type": "tool_call",
                     "tool": tool_name,
                     "summary": summary,
                     "input": truncate_obj(tool_input, 300),
                     "tool_id": tool_id,
-                })
+                }
+                if step_idx is not None:
+                    msg["step"] = step_idx
+                q.put(msg)
 
             elif block.get("type") == "tool_result":
                 tool_id = block.get("tool_use_id", "")
@@ -95,25 +109,26 @@ def parse_stream_event(line, q):
                     content = " ".join(
                         c.get("text", "") for c in content if c.get("type") == "text"
                     )
-                q.put({
+                msg = {
                     "type": "tool_result",
                     "tool_id": tool_id,
                     "result": str(content)[:500],
-                })
+                }
+                if step_idx is not None:
+                    msg["step"] = step_idx
+                q.put(msg)
 
     elif evt_type == "result":
-        result_text = evt.get("result", "")
-        cost = evt.get("total_cost_usd", 0)
-        duration = evt.get("duration_ms", 0)
-        num_turns = evt.get("num_turns", 0)
-
-        q.put({
+        msg = {
             "type": "result",
-            "data": result_text,
-            "cost": cost,
-            "duration_ms": duration,
-            "num_turns": num_turns,
-        })
+            "data": evt.get("result", ""),
+            "cost": evt.get("total_cost_usd", 0),
+            "duration_ms": evt.get("duration_ms", 0),
+            "num_turns": evt.get("num_turns", 0),
+        }
+        if step_idx is not None:
+            msg["step"] = step_idx
+        q.put(msg)
 
 
 def summarize_tool_call(tool_name, tool_input):
@@ -178,39 +193,136 @@ def run_agent(agent_id, prompt):
         agent["status"] = "running"
         q.put({"type": "status", "status": "running"})
 
-        clean_env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
-        clean_env["NO_COLOR"] = "1"
-
-        proc = subprocess.Popen(
-            [CLAUDE_BIN, "-p", prompt, "--output-format", "stream-json", "--verbose"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-            env=clean_env,
-        )
-        agent["process"] = proc
-
-        for line in proc.stdout:
-            line = line.strip()
-            if not line:
-                continue
-            parse_stream_event(line, q)
-
-        proc.wait()
-        exit_code = proc.returncode
-
-        # Capture any stderr
-        stderr_out = proc.stderr.read()
-        if stderr_out and stderr_out.strip():
-            q.put({"type": "stderr", "data": stderr_out.strip()[:500]})
-
-        agent["status"] = "done" if exit_code == 0 else "error"
-        q.put({"type": "status", "status": agent["status"], "exit_code": exit_code})
+        result_text = run_claude_cli(prompt, q)
+        agent["result"] = result_text
+        agent["status"] = "done"
+        q.put({"type": "status", "status": "done", "exit_code": 0})
 
     except Exception as e:
         agent["status"] = "error"
         q.put({"type": "error", "data": str(e)})
+
+    q.put({"type": "done"})
+
+
+def run_claude_cli(prompt, q, step_idx=None):
+    """Run claude CLI and stream events to queue. Returns result text."""
+    clean_env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+    clean_env["NO_COLOR"] = "1"
+
+    proc = subprocess.Popen(
+        [CLAUDE_BIN, "-p", prompt, "--output-format", "stream-json", "--verbose"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+        env=clean_env,
+    )
+
+    result_text = ""
+    for line in proc.stdout:
+        line = line.strip()
+        if not line:
+            continue
+        parse_stream_event(line, q, step_idx)
+        # Capture result text
+        try:
+            evt = json.loads(line)
+            if evt.get("type") == "result":
+                result_text = evt.get("result", "")
+        except json.JSONDecodeError:
+            pass
+
+    proc.wait()
+    exit_code = proc.returncode
+
+    stderr_out = proc.stderr.read()
+    if stderr_out and stderr_out.strip():
+        msg = {"type": "stderr", "data": stderr_out.strip()[:500]}
+        if step_idx is not None:
+            msg["step"] = step_idx
+        q.put(msg)
+
+    if exit_code != 0:
+        raise RuntimeError(f"Claude CLI exited with code {exit_code}")
+
+    return result_text
+
+
+def run_workflow(workflow_id):
+    """Run a multi-step workflow, chaining agent outputs."""
+    wf = active_workflows[workflow_id]
+    q = wf["output_queue"]
+    steps = wf["steps"]
+    total = len(steps)
+
+    try:
+        wf["status"] = "running"
+        q.put({"type": "workflow_status", "status": "running", "total_steps": total})
+
+        previous_output = ""
+
+        for i, step in enumerate(steps):
+            wf["current_step"] = i
+
+            step_name = step.get("name", f"Step {i+1}")
+            step_prompt = step.get("prompt", "")
+            step_skills = step.get("skills", [])
+
+            # Build the full prompt for this step
+            full_prompt = ""
+
+            # Include previous step output as context
+            if previous_output:
+                full_prompt += f"CONTEXT FROM PREVIOUS STEP:\n{previous_output}\n\n"
+
+            full_prompt += step_prompt
+
+            # Add skills
+            if step_skills:
+                skill_list = "\n".join(
+                    f"- /{s['name']} ({s.get('type', 'skill')}): {s.get('desc', '')}"
+                    for s in step_skills
+                )
+                full_prompt += f"\n\nYou have access to these skills — use them as needed:\n{skill_list}"
+
+            # Signal step start
+            q.put({
+                "type": "step_start",
+                "step": i,
+                "name": step_name,
+                "total": total,
+            })
+
+            try:
+                result_text = run_claude_cli(full_prompt, q, step_idx=i)
+                previous_output = result_text
+
+                q.put({
+                    "type": "step_complete",
+                    "step": i,
+                    "name": step_name,
+                    "result_preview": result_text[:500] if result_text else "",
+                })
+
+            except Exception as e:
+                q.put({
+                    "type": "step_error",
+                    "step": i,
+                    "name": step_name,
+                    "error": str(e),
+                })
+                wf["status"] = "error"
+                q.put({"type": "workflow_status", "status": "error"})
+                q.put({"type": "done"})
+                return
+
+        wf["status"] = "done"
+        q.put({"type": "workflow_status", "status": "done"})
+
+    except Exception as e:
+        wf["status"] = "error"
+        q.put({"type": "workflow_error", "data": str(e)})
 
     q.put({"type": "done"})
 
@@ -225,7 +337,12 @@ class VibeHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/" or parsed.path == "/index.html":
             self.serve_html()
         elif parsed.path == "/api/status":
-            self.send_json({"status": "ok", "claude_bin": CLAUDE_BIN, "active_agents": len(active_agents)})
+            self.send_json({
+                "status": "ok",
+                "claude_bin": CLAUDE_BIN,
+                "active_agents": len(active_agents),
+                "active_workflows": len(active_workflows),
+            })
         elif parsed.path == "/api/agents":
             agents_summary = {}
             with agent_lock:
@@ -238,6 +355,9 @@ class VibeHandler(SimpleHTTPRequestHandler):
         elif parsed.path.startswith("/api/stream/"):
             agent_id = parsed.path.split("/")[-1]
             self.stream_agent(agent_id)
+        elif parsed.path.startswith("/api/workflow/stream/"):
+            wf_id = parsed.path.split("/")[-1]
+            self.stream_workflow(wf_id)
         else:
             super().do_GET()
 
@@ -270,12 +390,106 @@ class VibeHandler(SimpleHTTPRequestHandler):
                     "output_queue": queue.Queue(),
                     "status": "starting",
                     "prompt": full_prompt,
+                    "result": "",
                 }
 
             thread = threading.Thread(target=run_agent, args=(agent_id, full_prompt), daemon=True)
             thread.start()
 
             self.send_json({"agent_id": agent_id, "status": "starting"})
+
+        elif parsed.path == "/api/workflow/launch":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+
+            steps = data.get("steps", [])
+            name = data.get("name", "Workflow")
+
+            if not steps:
+                self.send_json({"error": "No steps provided"}, 400)
+                return
+
+            global workflow_counter
+            with workflow_lock:
+                workflow_counter += 1
+                wf_id = f"wf-{workflow_counter}"
+                active_workflows[wf_id] = {
+                    "output_queue": queue.Queue(),
+                    "status": "starting",
+                    "name": name,
+                    "steps": steps,
+                    "current_step": -1,
+                }
+
+            thread = threading.Thread(target=run_workflow, args=(wf_id,), daemon=True)
+            thread.start()
+
+            self.send_json({"workflow_id": wf_id, "status": "starting"})
+
+        elif parsed.path == "/api/workflow/stop":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            wf_id = data.get("workflow_id", "")
+
+            with workflow_lock:
+                wf = active_workflows.get(wf_id)
+                if wf:
+                    wf["status"] = "stopped"
+                    wf["output_queue"].put({"type": "workflow_status", "status": "stopped"})
+                    wf["output_queue"].put({"type": "done"})
+                    self.send_json({"status": "stopped"})
+                else:
+                    self.send_json({"error": "Workflow not found"}, 404)
+
+        elif parsed.path == "/api/workflows":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            action = data.get("action", "")
+
+            wf_file = os.path.join(BASE_DIR, "workflows.json")
+
+            if action == "save":
+                workflows = data.get("workflows", [])
+                with open(wf_file, "w") as f:
+                    json.dump(workflows, f, indent=2)
+                self.send_json({"status": "saved", "count": len(workflows)})
+
+            elif action == "load":
+                if os.path.exists(wf_file):
+                    with open(wf_file, "r") as f:
+                        workflows = json.load(f)
+                    self.send_json({"workflows": workflows})
+                else:
+                    self.send_json({"workflows": []})
+            else:
+                self.send_json({"error": "Unknown action"}, 400)
+
+        elif parsed.path == "/api/custom-agents":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            action = data.get("action", "")
+
+            agents_file = os.path.join(BASE_DIR, "custom-agents.json")
+
+            if action == "save":
+                agents = data.get("agents", [])
+                with open(agents_file, "w") as f:
+                    json.dump(agents, f, indent=2)
+                self.send_json({"status": "saved", "count": len(agents)})
+
+            elif action == "load":
+                if os.path.exists(agents_file):
+                    with open(agents_file, "r") as f:
+                        agents = json.load(f)
+                    self.send_json({"agents": agents})
+                else:
+                    self.send_json({"agents": []})
+            else:
+                self.send_json({"error": "Unknown action"}, 400)
 
         elif parsed.path == "/api/stop":
             content_length = int(self.headers.get("Content-Length", 0))
@@ -294,14 +508,8 @@ class VibeHandler(SimpleHTTPRequestHandler):
         else:
             self.send_json({"error": "Not found"}, 404)
 
-    def stream_agent(self, agent_id):
-        with agent_lock:
-            agent = active_agents.get(agent_id)
-
-        if not agent:
-            self.send_json({"error": "Agent not found"}, 404)
-            return
-
+    def stream_sse(self, q):
+        """Generic SSE streaming from a queue."""
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
@@ -309,7 +517,6 @@ class VibeHandler(SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
 
-        q = agent["output_queue"]
         while True:
             try:
                 msg = q.get(timeout=30)
@@ -324,6 +531,22 @@ class VibeHandler(SimpleHTTPRequestHandler):
             except (BrokenPipeError, ConnectionResetError):
                 break
 
+    def stream_agent(self, agent_id):
+        with agent_lock:
+            agent = active_agents.get(agent_id)
+        if not agent:
+            self.send_json({"error": "Agent not found"}, 404)
+            return
+        self.stream_sse(agent["output_queue"])
+
+    def stream_workflow(self, wf_id):
+        with workflow_lock:
+            wf = active_workflows.get(wf_id)
+        if not wf:
+            self.send_json({"error": "Workflow not found"}, 404)
+            return
+        self.stream_sse(wf["output_queue"])
+
     def send_json(self, data, code=200):
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -332,7 +555,7 @@ class VibeHandler(SimpleHTTPRequestHandler):
         self.wfile.write(json.dumps(data).encode())
 
     def serve_html(self):
-        html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vibe-office.html")
+        html_path = os.path.join(BASE_DIR, "vibe-office.html")
         if os.path.exists(html_path):
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
@@ -366,8 +589,8 @@ class ThreadedHTTPServer(HTTPServer):
 
 
 if __name__ == "__main__":
-    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vibe-office.html")
-    script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vibe-office.sh")
+    html_path = os.path.join(BASE_DIR, "vibe-office.html")
+    script_path = os.path.join(BASE_DIR, "vibe-office.sh")
     if not os.path.exists(html_path) and os.path.exists(script_path):
         print("Generating vibe-office.html...")
         subprocess.run(["bash", script_path, html_path], check=True)
