@@ -1,183 +1,3 @@
-#!/bin/bash
-# Vibe Office - Pixel Art Plugin/Skill/Agent Visualizer
-# Scans your ~/.claude/plugins/cache/ directory and generates an interactive HTML dashboard
-# Usage: ./vibe-office.sh [output_file]
-#   output_file: path to write HTML (default: ./vibe-office.html)
-
-set -euo pipefail
-
-OUTPUT="${1:-./vibe-office.html}"
-PLUGIN_BASE="$HOME/.claude/plugins/cache"
-
-# Find the plugin root - it may be nested one level (e.g., fe-vibe/)
-PLUGIN_ROOT=""
-if [ -d "$PLUGIN_BASE" ]; then
-  for candidate in "$PLUGIN_BASE" "$PLUGIN_BASE"/*/; do
-    if ls "$candidate"/*/latest/skills 2>/dev/null | head -1 > /dev/null 2>&1 || \
-       ls "$candidate"/fe-*/*/skills 2>/dev/null | head -1 > /dev/null 2>&1; then
-      PLUGIN_ROOT="$candidate"
-      break
-    fi
-  done
-  if [ -z "$PLUGIN_ROOT" ]; then
-    PLUGIN_ROOT="$PLUGIN_BASE"
-  fi
-fi
-
-if [ ! -d "$PLUGIN_ROOT" ]; then
-  echo "Error: No plugins found at $PLUGIN_BASE"
-  echo "Make sure you have Claude Code plugins installed."
-  exit 1
-fi
-
-echo "Scanning plugins in: $PLUGIN_ROOT"
-
-# Extract description from frontmatter of a .md file
-# Looks for: description: <text> between --- markers
-extract_description() {
-  local file="$1"
-  if [ ! -f "$file" ]; then
-    echo ""
-    return
-  fi
-  # Read frontmatter between first two --- lines, extract description field
-  local in_front=false
-  local desc=""
-  while IFS= read -r line; do
-    if [[ "$line" == "---" ]]; then
-      if $in_front; then
-        break
-      else
-        in_front=true
-        continue
-      fi
-    fi
-    if $in_front; then
-      if [[ "$line" =~ ^description:\ *(.*) ]]; then
-        desc="${BASH_REMATCH[1]}"
-        # Strip surrounding quotes if present
-        desc="${desc#\"}"
-        desc="${desc%\"}"
-        desc="${desc#\'}"
-        desc="${desc%\'}"
-      fi
-    fi
-  done < "$file"
-  echo "$desc"
-}
-
-# Escape string for safe JSON embedding
-json_escape() {
-  local s="$1"
-  s="${s//\\/\\\\}"
-  s="${s//\"/\\\"}"
-  s="${s//$'\n'/\\n}"
-  s="${s//$'\r'/}"
-  s="${s//$'\t'/\\t}"
-  echo "$s"
-}
-
-# Build JSON for each plugin
-PLUGIN_JSON="{"
-FIRST_PLUGIN=true
-
-for plugin_dir in "$PLUGIN_ROOT"/*/; do
-  [ -d "$plugin_dir" ] || continue
-  plugin_name=$(basename "$plugin_dir")
-  [[ "$plugin_name" == "node_modules" || "$plugin_name" == ".git" ]] && continue
-
-  # Find the version directory (must contain skills/ or agents/ to be a real plugin)
-  version_dir=""
-  version=""
-  for vd in "$plugin_dir"/*/; do
-    [ -d "$vd" ] || continue
-    if [ -d "$vd/skills" ] || [ -d "$vd/agents" ]; then
-      version_dir="$vd"
-      version=$(basename "$vd")
-      break
-    fi
-  done
-  [ -z "$version_dir" ] && continue
-
-  # Collect skills with descriptions
-  skills_json="["
-  first_skill=true
-  if [ -d "$version_dir/skills" ]; then
-    for skill_dir in "$version_dir/skills"/*/; do
-      [ -d "$skill_dir" ] || continue
-      skill_name=$(basename "$skill_dir")
-
-      # Try SKILL.md first, then README.md for description
-      desc=""
-      if [ -f "$skill_dir/SKILL.md" ]; then
-        desc=$(extract_description "$skill_dir/SKILL.md")
-      fi
-      if [ -z "$desc" ] && [ -f "$skill_dir/README.md" ]; then
-        # Grab first non-heading, non-empty line from README as fallback
-        desc=$(grep -m1 -v '^#\|^$\|^---' "$skill_dir/README.md" 2>/dev/null | head -1)
-      fi
-      desc=$(json_escape "${desc:-No description available}")
-
-      if $first_skill; then first_skill=false; else skills_json+=","; fi
-      skills_json+="{\"name\":\"$skill_name\",\"desc\":\"$desc\"}"
-    done
-  fi
-  skills_json+="]"
-
-  # Collect agents with descriptions
-  agents_json="["
-  first_agent=true
-  if [ -d "$version_dir/agents" ]; then
-    for agent_file in "$version_dir/agents"/*.md "$version_dir/agents"/*.json; do
-      [ -f "$agent_file" ] || continue
-      agent_name=$(basename "$agent_file")
-      agent_name="${agent_name%.md}"
-      agent_name="${agent_name%.json}"
-
-      desc=$(extract_description "$agent_file")
-      desc=$(json_escape "${desc:-No description available}")
-
-      if $first_agent; then first_agent=false; else agents_json+=","; fi
-      agents_json+="{\"name\":\"$agent_name\",\"desc\":\"$desc\"}"
-    done
-    for agent_dir in "$version_dir/agents"/*/; do
-      [ -d "$agent_dir" ] || continue
-      agent_name=$(basename "$agent_dir")
-      desc=""
-      if [ -f "$agent_dir/AGENT.md" ]; then
-        desc=$(extract_description "$agent_dir/AGENT.md")
-      elif [ -f "$agent_dir/README.md" ]; then
-        desc=$(grep -m1 -v '^#\|^$\|^---' "$agent_dir/README.md" 2>/dev/null | head -1)
-      fi
-      desc=$(json_escape "${desc:-No description available}")
-      if $first_agent; then first_agent=false; else agents_json+=","; fi
-      agents_json+="{\"name\":\"$agent_name\",\"desc\":\"$desc\"}"
-    done
-  fi
-  if [ -d "$version_dir/agent-definitions" ]; then
-    for agent_file in "$version_dir/agent-definitions"/*.json "$version_dir/agent-definitions"/*.md; do
-      [ -f "$agent_file" ] || continue
-      agent_name=$(basename "$agent_file")
-      agent_name="${agent_name%.md}"
-      agent_name="${agent_name%.json}"
-      desc=$(extract_description "$agent_file")
-      desc=$(json_escape "${desc:-No description available}")
-      if $first_agent; then first_agent=false; else agents_json+=","; fi
-      agents_json+="{\"name\":\"$agent_name\",\"desc\":\"$desc\"}"
-    done
-  fi
-  agents_json+="]"
-
-  if $FIRST_PLUGIN; then FIRST_PLUGIN=false; else PLUGIN_JSON+=","; fi
-  PLUGIN_JSON+="\"$plugin_name\":{\"version\":\"$version\",\"skills\":$skills_json,\"agents\":$agents_json}"
-done
-
-PLUGIN_JSON+="}"
-
-echo "Building Vibe Office..."
-
-# Generate the HTML
-cat > "$OUTPUT" << 'HTMLEOF'
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1072,12 +892,8 @@ cat > "$OUTPUT" << 'HTMLEOF'
 <div class="toast" id="toast">COPIED!</div>
 
 <script>
-HTMLEOF
-
-# Inject the dynamic plugin data
-echo "const PLUGIN_DATA = (function() {" >> "$OUTPUT"
-echo "  const raw = $PLUGIN_JSON;" >> "$OUTPUT"
-cat >> "$OUTPUT" << 'JSEOF'
+const PLUGIN_DATA = (function() {
+  const raw = {"fe-databricks-tools":{"version":"1.0.6","skills":[{"name":"databricks-apps","desc":"Build and deploy full-stack Databricks Apps with Lakebase, Foundation Model API, and React/FastAPI"},{"name":"databricks-authentication","desc":"This skill provides instructions for authenticating with databricks. Do this before any databricks operations."},{"name":"databricks-data-generation","desc":"Generate realistic synthetic data for demos and testing across retail, healthcare (incl. clinical trials), financial, IoT, manufacturing, supply chain, oil & gas, and gaming industries using Polars + Mimesis (local/UC) or dbldatagen (Connect/notebooks)."},{"name":"databricks-demo","desc":"Create, deploy and run demos relating to or integrating with Databricks. "},{"name":"databricks-fe-vm-workspace-deployment","desc":"Deploy and manage Databricks workspaces using the FE Vending Machine with automatic authentication and environment caching. Answers questions about which workspace was deployed or created at an earlier time"},{"name":"databricks-lakebase","desc":"Create, configure, and query Lakebase Postgres databases using CLI and code"},{"name":"databricks-lakeview-dashboard-analyzer","desc":"Analyze existing Databricks AI/BI (Lakeview) dashboards using the Lakeview REST API (default) or Chrome DevTools for visual inspection. Extracts datasets, queries, widgets, and page structure from dashboard definitions. Use when analyzing dashboards, extracting dashboard data, or when user shares a Databricks dashboard URL."},{"name":"databricks-lakeview-dashboard","desc":"Programmatically create and manage Lakeview dashboards in Databricks"},{"name":"databricks-lineage","desc":"This skill enables exploration of Databricks Unity Catalog data lineage. It should be used when tracing data flow between tables, understanding how data assets are connected, finding upstream data sources or downstream consumers, or investigating column-level data dependencies. Complements the databricks-workspace skill for comprehensive data asset exploration."},{"name":"databricks-oneenv-workspace-deployment","desc":"Create and manage Databricks workspaces in the One-Env account for demos requiring custom AWS integrations"},{"name":"databricks-query","desc":"Execute a query with Databricks"},{"name":"databricks-resource-deployment","desc":"Deploys resources (notebooks, jobs, clusters, warehouses, apps, databases/lakebase instances, catalogs, schemas) into an existing databricks workspace.  "},{"name":"databricks-warehouse-selector","desc":"Select a warehouse to execute a Databricks SQL Query on"},{"name":"databricks-workspace-files","desc":"This skill enables exploration of Databricks workspace files using the Databricks CLI. It should be used when listing, browsing, or pulling files from Databricks workspaces into context for code review, debugging, or understanding existing notebooks and scripts. Supports .py, .sql, and .ipynb files."},{"name":"fe-snowflake","desc":"Set up and manage Snowflake trial accounts for Field Engineering demos and testing"}],"agents":[{"name":"databricks-apps-developer","desc":"Expert Databricks Apps developer specializing in Node.js/React applications. Use for scaffolding, configuring, deploying, and managing Databricks Apps. Knows app.yaml configuration, CLI commands, REST APIs, resources, authentication, and best practices. Delegates UI testing to web-devloop-tester."}]},"fe-file-expenses":{"version":"1.0.1","skills":[{"name":"emburse-expenses","desc":"Emburse ChromeRiver API primitives for expense management - create reports, add expenses, link receipts, submit reports"},{"name":"file-expenses","desc":"File expense reports with Emburse ChromeRiver - automatically identify, collect receipts, and submit expense reports"}],"agents":[{"name":"expense-identifier","desc":"No description available"},{"name":"expense-line-item-processor","desc":"No description available"},{"name":"historical-profile-builder","desc":"No description available"},{"name":"receipt-analyzer","desc":"No description available"}]},"fe-google-tools":{"version":"1.1.10","skills":[{"name":"gmail","desc":"Search, read, compose, organize Gmail emails, and manage filters (label rules) using gcloud CLI + curl. Use this skill for ANY email-related request - sending emails, reading emails, drafting emails, forwarding, replying, checking inbox, email attachments, email labels, or any operation involving e-mail."},{"name":"google-auth","desc":"Unified authentication for all Google Workspace APIs (Docs, Sheets, Slides, Drive, Calendar, Gmail, Tasks, Forms)"},{"name":"google-calendar","desc":"Create, modify, and manage Google Calendar events. Find meeting times when attendees are available using rich calendar queries and FreeBusy."},{"name":"google-docs","desc":"Open, read, create, edit, and manage Google Docs from docs.google.com URLs. Use this skill for ANY Google Docs operation - reading existing documents, creating new ones, updating content, or managing Drive files. Handles Slides and Drive files too. Use this instead of fetch for reading google docs. Also use this skill to convert markdown to Google Docs format."},{"name":"google-drive-upload","desc":"Upload any file (PDF, HTML, images, videos, etc.) to Google Drive. Supports multipart uploads, folder destinations, custom names, and automatic permission setting."},{"name":"google-forms","desc":"Create, edit, and manage Google Forms surveys and quizzes. Collect and analyze form responses. Use this skill for ANY Google Forms operation - creating surveys, adding questions, configuring quiz settings, reading responses, or managing form settings."},{"name":"google-sheets","desc":"Create and manage well-formatted Google Sheets with cells, formulas, charts, colors, and multiple sheets using gcloud CLI + curl"},{"name":"google-slides","desc":"Create and manage well-formatted Google Slides presentations with Databricks templates, tables, charts, and images using gcloud CLI + curl"},{"name":"google-tasks","desc":"Use this skill for Google Tasks operations - add tasks to your todo list, show all tasks, list tasks, mark tasks as done or complete, create task lists, manage subtasks, and set due dates. Handles any request about Google Tasks, todo lists, reminders, or task management."}],"agents":[{"name":"google-drive","desc":"Expert Google Drive/Docs/Slides manager using gcloud CLI + curl. Opens, reads, creates, edits, and manages documents from docs.google.com URLs. Handles well-formatted documents with headings, tables, hyperlinks, images, and formatting. Uses the google-docs skill for authentication and document operations."}]},"fe-internal-tools":{"version":"1.3.1","skills":[{"name":"aha-ideas","desc":"Aha! Ideas operations - search, detail lookup, create ideas, and add proxy votes"},{"name":"aws-authentication","desc":"This skill provides instructions for authenticating with aws using aws cli"},{"name":"centralized-system-tables-translator","desc":"Translates Databricks SQL queries from standard system tables (system.billing.usage, system.lakeflow.jobs, etc.) to the centralized multi-account system tables infrastructure (main.centralized_system_tables.*). This skill should be used when converting customer-facing Databricks system table queries into internal cross-account queries, building Lakeview dashboards that use centralized system tables, or translating any SQL that references system.* tables to the centralized namespace. Triggers on: system tables, centralized system tables, translate query, convert to centralized, cross-account query, account_workspace_mappings."},{"name":"databricks-org","desc":"Look up organizational information for Databricks employees including BU, BU+1, segment, vertical, manager hierarchy, direct/indirect reports, and territory accounts"},{"name":"eng-blockers","desc":"Engineering blocker search - find product gaps, escalations, and customer blockers"},{"name":"genie-rooms","desc":"Query any Databricks Genie Room using natural language. Select from known internal Genie Rooms or provide your own room ID."},{"name":"internal-jargon","desc":"Look up Databricks internal jargon, acronyms, and terminology from the company glossary. Context-efficient - only fetches specific terms when needed."},{"name":"logfood-querier","desc":"Queries Databricks internal data and metrics to understand consumption, feature usage, account information, and more."},{"name":"uco-consumption-analysis","desc":"Analyze Use Case Objects (UCOs) against actual consumption data to validate stages, identify missing UCOs, and create actionable progression plans following the gold standard U1-U6 framework"}],"agents":[{"name":"field-data-analyst","desc":"Expert Field Engineering data analyst for Salesforce, Logfood, and organizational queries. Use PROACTIVELY for any internal data operations - UCOs, accounts, consumption metrics, org hierarchies, and sales data. Always pulls in the right skills and executes queries efficiently."}]},"fe-jira-tools":{"version":"1.0.0","skills":[{"name":"jira-actions","desc":"Use this skill for ANY mention of ES tickets, JIRA ES, engineering support tickets, or filing tickets. Triggers on: 'ES ticket', 'ES-123456', 'file a ticket', 'create an ES', 'JIRA ES'. This skill handles searching, viewing, commenting, and creating ES tickets."}],"agents":[{"name":"jira-ticket-assistant","desc":"No description available"}]},"fe-salesforce-tools":{"version":"1.1.4","skills":[{"name":"salesforce-actions","desc":"Read and update salesforce, including Use Cases (UCOs), Accounts, Opportunities, Blockers, ASQs/Specialist Requests, Preview Feature Requests. Manage UCO stages U1, U2 (Scoping), U3 (Evaluating), U4 (Confirming), U5 (Onboarding), U6 (Live)."},{"name":"salesforce-authentication","desc":"This skill provides instructions for authenticating with salesforce before using sf cli or any salesforce work."},{"name":"uco-blockers","desc":"Create, query, update, and close Blocker__c records on Use Case Objects (UCOs). Link Aha ideas to blockers and manage blocker lifecycle."},{"name":"uco-updates","desc":"Update Use Case Objects (UCOs) with status updates"}],"agents":[]},"fe-specialized-agents":{"version":"1.0.0","skills":[{"name":"lucid-diagram","desc":"This skill generates architecture, data flow, and sequence diagrams as Graphviz DOT files and converts them to Lucid Chart compatible XML format. This skill should be used when the user wants to visualize system architecture, data flows, component interactions, or any technical diagram that can be imported into Lucid Chart."}],"agents":[{"name":"mermaid-diagrams","desc":"Generate Mermaid diagrams and output them as images (PNG, SVG, PDF). Uses web research to understand diagram requirements and mermaid-cli (mmdc) to render professional diagrams. Supports flowcharts, sequence diagrams, class diagrams, ER diagrams, state diagrams, Gantt charts, and more."},{"name":"web-devloop-tester","desc":"Web development inner loop specialist. Use PROACTIVELY for starting local dev servers (React, Node.js, Streamlit, Dash), testing UI changes, verifying functionality with Chrome DevTools MCP, checking console errors, testing interactions, and performance monitoring. Handles the complete local testing workflow for web applications. Definitely use this for Databricks Apps devloop. "}]},"fe-vibe-setup":{"version":"1.1.4","skills":[{"name":"configure-vibe","desc":"Configure, setup, and validate the vibe environment including dependencies, directories, and permissions"},{"name":"dupe-check","desc":"Check whether a plugin or skill idea already exists in the vibe marketplace. Use this before building a new plugin or skill to avoid duplicating existing work. Triggers on \"dupe check\", \"duplicate check\", \"does a skill exist for\", \"is there already a plugin for\", \"check if this exists\", \"before I build a plugin\"."},{"name":"validate-mcp-access","desc":"Validate MCP connection access for Slack, Glean, JIRA, and Confluence in the logfood workspace"},{"name":"vibe-publish-plugin","desc":"Publish skills, hooks, MCP servers, or plugins to the vibe marketplace. Validates structure, creates PRs, and handles permissions."},{"name":"vibe-report-issue","desc":"Report an issue with vibe by summarizing the current conversation, describing the problem, and filing a GitHub issue in the vibe repo. Use when something went wrong, a skill didn't invoke correctly, or results were unexpected."},{"name":"vibe-update","desc":"Update vibe and its plugins to the latest version"}],"agents":[{"name":"vibe-profile","desc":"Discover and build a comprehensive user profile including personal info, accounts, use cases, team members, and Slack channels. Writes profile to ~/.vibe/profile."}]},"fe-workflows":{"version":"1.3.5","skills":[{"name":"account-review-deck","desc":"Create QBR/EBC account review slide decks for customer quarterly business reviews. Use this skill when the user says 'QBR', 'quarterly business review', 'account review deck', 'EBC deck', 'executive business review', 'customer review deck', or wants to create a slide presentation reviewing a customer's Databricks usage, use cases, escalations, and partnership status."},{"name":"aha-workflow","desc":"Guided Aha! workflows - smart search from meeting notes, guided creation, and contextual voting"},{"name":"competitive-analysis","desc":"Competitive analysis comparing Databricks to competitors like Snowflake, Redshift, Fabric, Polaris, Purview. Use for \"compare\", \"vs\", \"why Databricks over X\", \"competitive\", \"battlecard\" questions. Fast mode (default) for quick answers using registry differentiators. Comprehensive mode when user requests \"create\", \"generate\", \"comprehensive\", \"detailed\", \"battlecard\", \"document\", or \"research\" - includes Glean searches and battlecard documents."},{"name":"databricks-learning-assistant","desc":"Use this skill whenever the user says teach me, learn, train me, walk me through, tutorial, study, help me understand, show me how to use, or master — for ANY Databricks feature, Vibe workflow, or Claude Code topic. This is the dedicated learning and teaching skill. It researches the topic live, gives background and history, discusses the user's accounts to pick a relevant scenario, then guides the user to build it hands-on (the user writes the code, not the assistant). Four tracks: learn any Databricks platform feature (liquid clustering, DABs, Lakeflow, Unity Catalog, Apps, etc.), learn Vibe SA workflows, learn Claude Code, or become a Vibe developer. Personalized to the SA's real accounts and customers."},{"name":"databricks-sizing","desc":"Get Databricks cost estimates using the Quicksizer agent. Sizes ETL, Data Warehousing, ML, Interactive, Lakebase, Lakeflow Connect, and Apps workloads."},{"name":"databricks-troubleshooting","desc":"Systematic troubleshooting guide for common Databricks issues and errors"},{"name":"draft-rca","desc":"Draft Root Cause Analysis documents for incidents using Salesforce, JIRA, Slack, and email sources"},{"name":"exec-messaging-coach","desc":"Interactive executive messaging coach for GTM colleagues preparing for customer meetings. Use when preparing for executive meetings, building talk tracks, crafting a Challenger narrative, practicing objection handling, or doing meeting roleplay. Triggers on phrases like \"help me prep for\", \"executive meeting\", \"coaching session\", \"talk track\", \"message framing\", \"objection prep\", \"roleplay the meeting\"."},{"name":"fe-account-tap-map","desc":"Complete TAP (TAM, Architecture, Powerbase) mapping for Databricks customer accounts. Builds on tam-sizing to add incumbent tools, champions, and DBRX penetration by workload area. Generates a comprehensive Google Doc ready for SFDC Account Plan writeback."},{"name":"fe-account-transition","desc":"Create comprehensive account transition documents for new Account Executives and Solution Architects taking over accounts. Gathers data from Salesforce, Logfood, Glean, and JIRA."},{"name":"fe-answer-customer-questions","desc":"Draft responses to customer questions from Slack, email, or Google Docs. Researches answers using multiple sources and creates a combined Q&A document with references. Use this skill when anyone mentions \"customer questions\", \"product\", \"roadmap\", \"draft responses"},{"name":"fe-architecture-diagram","desc":"Generate professional architecture diagrams with vendor icons (Databricks, AWS, GCP, Snowflake, Kafka) using mingrammer/diagrams or Mermaid. Features visual feedback-driven refinement via Chrome DevTools."},{"name":"fe-customer-courses","desc":"Generate customer-specific training course recommendations or training plans based on Salesforce use cases, Google Drive research, and the Databricks course catalog. Creates a customer-facing Google Doc with personalized course suggestions. Use this when the user asks for training recommendations, training courses, or a training plan for a customer."},{"name":"fe-databricks-feature-tester","desc":"Actually test whether Databricks features work by running real tests. Use this to try out features, verify they work in practice, check if something actually works, or validate feature behavior hands-on. Provisions infrastructure, executes test code, and documents results. Use this when you want to RUN a test, not just research whether something is supported."},{"name":"fe-poc-doc","desc":"Create and maintain Proof of Concept documentation for customer engagements"},{"name":"fe-poc-postmortem","desc":"Generate comprehensive post-mortem retrospectives for competitive POCs that we didn't win"},{"name":"fe-rfp","desc":">"},{"name":"humanize","desc":"Rewrite AI-generated text to sound like a real human wrote it. Uses your personal voice profile (~/.vibe/voice_profile.yaml) for tone, style, and banned-phrase enforcement. Run with --setup to build or edit your voice profile."},{"name":"interview-prep","desc":"Prepare a structured interview plan for the Databricks SA/DSA Design & Architecture interview. Analyzes a candidate's resume and generates a tailored scenario, discovery questions, probing questions by phase, spike-specific deep dives, and a scoring rubric. Use this when preparing to interview a candidate."},{"name":"performance-tuning","desc":"Optimize Databricks workload performance through systematic tuning and analysis. Use this skill when a customer has slow Spark jobs, slow SQL queries, high costs, data skew, shuffle/spill problems, streaming latency issues, or needs help reading Spark UI / Query Profile output. Covers Spark code, Spark SQL, DBSQL, and Structured Streaming workloads."},{"name":"product-question-research","desc":"Research and answer Databricks product questions for customers. Use this skill when asked about feature support, capabilities, limitations, or whether something is supported. Searches public docs, Glean, and Slack to provide an answer with confidence rating."},{"name":"security-questionnaire","desc":"Complete security questionnaires, assessments, and compliance documentation for customer procurement"},{"name":"showcase","desc":"Document and share a Vibe session as a showcase writeup. Creates a Google Doc in the shared Vibe Showcases folder. Use this skill when the user says \"showcase\", \"writeup\", \"document this session\", or wants to share what they accomplished with Vibe."},{"name":"support-escalation","desc":"Create and manage support escalations for critical customer support cases"}],"agents":[{"name":"account-review-deck","desc":"No description available"},{"name":"customer-courses-generator","desc":"No description available"},{"name":"customer-question-answerer","desc":"No description available"},{"name":"databricks-feature-test-executor","desc":"No description available"},{"name":"fe-poc-doc","desc":"No description available"},{"name":"learning-work-checker","desc":"No description available"},{"name":"poc-postmortem","desc":"No description available"},{"name":"product-question-researcher","desc":"No description available"},{"name":"rca-doc","desc":"No description available"},{"name":"slack-discovery-agent","desc":"No description available"},{"name":"sqrc-questionnaire","desc":"No description available"},{"name":"sqrc-validator","desc":"No description available"}]}};
   const iconMap = {
     "databricks-tools": "&#x1F3ED;",
     "file-expenses": "&#x1F4B3;",
@@ -1114,9 +930,6 @@ cat >> "$OUTPUT" << 'JSEOF'
   }
   return raw;
 })();
-JSEOF
-
-cat >> "$OUTPUT" << 'JSEOF'
 
 // =============================================
 // AGENT TYPE DEFINITIONS (from Claude Code)
@@ -2077,8 +1890,3 @@ renderToolsLegend();
 </script>
 </body>
 </html>
-JSEOF
-
-echo ""
-echo "Vibe Office generated at: $OUTPUT"
-echo "Open it with: open $OUTPUT"

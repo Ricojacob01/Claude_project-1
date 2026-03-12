@@ -11,10 +11,9 @@ import shutil
 import subprocess
 import sys
 import threading
-import time
 import queue
 from http.server import HTTPServer, SimpleHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 
 PORT = int(os.environ.get("VIBE_PORT", 5555))
 
@@ -39,13 +38,139 @@ if not CLAUDE_BIN:
 print(f"Using Claude CLI: {CLAUDE_BIN}")
 
 # Active agent processes
-active_agents = {}  # id -> {"process", "output_queue", "status", "prompt"}
+active_agents = {}
 agent_counter = 0
 agent_lock = threading.Lock()
 
 
+def parse_stream_event(line, q):
+    """Parse a stream-json line from claude CLI and emit UI-friendly events."""
+    try:
+        evt = json.loads(line)
+    except json.JSONDecodeError:
+        q.put({"type": "raw", "data": line})
+        return
+
+    evt_type = evt.get("type", "")
+
+    if evt_type == "system" and evt.get("subtype") == "init":
+        q.put({
+            "type": "init",
+            "model": evt.get("model", ""),
+            "tools": evt.get("tools", []),
+            "session_id": evt.get("session_id", ""),
+            "mcp_servers": evt.get("mcp_servers", []),
+        })
+
+    elif evt_type == "assistant":
+        msg = evt.get("message", {})
+        content_blocks = msg.get("content", [])
+
+        for block in content_blocks:
+            if block.get("type") == "text":
+                text = block.get("text", "")
+                if text.strip():
+                    q.put({"type": "text", "data": text})
+
+            elif block.get("type") == "tool_use":
+                tool_name = block.get("name", "unknown")
+                tool_input = block.get("input", {})
+                tool_id = block.get("id", "")
+
+                # Build a human-readable summary
+                summary = summarize_tool_call(tool_name, tool_input)
+
+                q.put({
+                    "type": "tool_call",
+                    "tool": tool_name,
+                    "summary": summary,
+                    "input": truncate_obj(tool_input, 300),
+                    "tool_id": tool_id,
+                })
+
+            elif block.get("type") == "tool_result":
+                tool_id = block.get("tool_use_id", "")
+                content = block.get("content", "")
+                if isinstance(content, list):
+                    content = " ".join(
+                        c.get("text", "") for c in content if c.get("type") == "text"
+                    )
+                q.put({
+                    "type": "tool_result",
+                    "tool_id": tool_id,
+                    "result": str(content)[:500],
+                })
+
+    elif evt_type == "result":
+        result_text = evt.get("result", "")
+        cost = evt.get("total_cost_usd", 0)
+        duration = evt.get("duration_ms", 0)
+        num_turns = evt.get("num_turns", 0)
+
+        q.put({
+            "type": "result",
+            "data": result_text,
+            "cost": cost,
+            "duration_ms": duration,
+            "num_turns": num_turns,
+        })
+
+
+def summarize_tool_call(tool_name, tool_input):
+    """Create a short human-readable summary of what a tool call does."""
+    if tool_name == "Bash":
+        cmd = tool_input.get("command", "")
+        return f"Running: {cmd[:120]}"
+    elif tool_name == "Read":
+        path = tool_input.get("file_path", "")
+        return f"Reading: {path.split('/')[-1] if '/' in path else path}"
+    elif tool_name == "Write":
+        path = tool_input.get("file_path", "")
+        return f"Writing: {path.split('/')[-1] if '/' in path else path}"
+    elif tool_name == "Edit":
+        path = tool_input.get("file_path", "")
+        return f"Editing: {path.split('/')[-1] if '/' in path else path}"
+    elif tool_name == "Glob":
+        pattern = tool_input.get("pattern", "")
+        return f"Searching files: {pattern}"
+    elif tool_name == "Grep":
+        pattern = tool_input.get("pattern", "")
+        return f"Searching code: {pattern[:80]}"
+    elif tool_name == "WebSearch":
+        query = tool_input.get("query", "")
+        return f"Web search: {query[:80]}"
+    elif tool_name == "WebFetch":
+        url = tool_input.get("url", "")
+        return f"Fetching: {url[:80]}"
+    elif tool_name == "Agent":
+        desc = tool_input.get("description", "")
+        sub = tool_input.get("subagent_type", "")
+        return f"Launching subagent ({sub}): {desc}"
+    elif tool_name == "Skill":
+        skill = tool_input.get("skill", "")
+        return f"Using skill: /{skill}"
+    elif tool_name == "ToolSearch":
+        query = tool_input.get("query", "")
+        return f"Searching tools: {query}"
+    elif tool_name.startswith("mcp__"):
+        parts = tool_name.split("__")
+        service = parts[1] if len(parts) > 1 else "mcp"
+        action = parts[2] if len(parts) > 2 else tool_name
+        return f"MCP {service}: {action}"
+    else:
+        return f"{tool_name}"
+
+
+def truncate_obj(obj, max_len):
+    """Truncate an object's string representation."""
+    s = json.dumps(obj, ensure_ascii=False)
+    if len(s) > max_len:
+        return s[:max_len] + "..."
+    return s
+
+
 def run_agent(agent_id, prompt):
-    """Run claude CLI in a subprocess and capture output."""
+    """Run claude CLI with stream-json output and parse events."""
     agent = active_agents[agent_id]
     q = agent["output_queue"]
 
@@ -53,21 +178,33 @@ def run_agent(agent_id, prompt):
         agent["status"] = "running"
         q.put({"type": "status", "status": "running"})
 
+        clean_env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+        clean_env["NO_COLOR"] = "1"
+
         proc = subprocess.Popen(
-            [CLAUDE_BIN, "-p", prompt],
+            [CLAUDE_BIN, "-p", prompt, "--output-format", "stream-json", "--verbose"],
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
-            env={k: v for k, v in os.environ.items() if k != "CLAUDECODE"} | {"NO_COLOR": "1"},
+            env=clean_env,
         )
         agent["process"] = proc
 
         for line in proc.stdout:
-            q.put({"type": "output", "data": line})
+            line = line.strip()
+            if not line:
+                continue
+            parse_stream_event(line, q)
 
         proc.wait()
         exit_code = proc.returncode
+
+        # Capture any stderr
+        stderr_out = proc.stderr.read()
+        if stderr_out and stderr_out.strip():
+            q.put({"type": "stderr", "data": stderr_out.strip()[:500]})
+
         agent["status"] = "done" if exit_code == 0 else "error"
         q.put({"type": "status", "status": agent["status"], "exit_code": exit_code})
 
@@ -80,7 +217,6 @@ def run_agent(agent_id, prompt):
 
 class VibeHandler(SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
-        # Quiet logging
         pass
 
     def do_GET(self):
@@ -88,10 +224,8 @@ class VibeHandler(SimpleHTTPRequestHandler):
 
         if parsed.path == "/" or parsed.path == "/index.html":
             self.serve_html()
-
         elif parsed.path == "/api/status":
             self.send_json({"status": "ok", "claude_bin": CLAUDE_BIN, "active_agents": len(active_agents)})
-
         elif parsed.path == "/api/agents":
             agents_summary = {}
             with agent_lock:
@@ -101,11 +235,9 @@ class VibeHandler(SimpleHTTPRequestHandler):
                         "prompt": a["prompt"][:100],
                     }
             self.send_json(agents_summary)
-
         elif parsed.path.startswith("/api/stream/"):
             agent_id = parsed.path.split("/")[-1]
             self.stream_agent(agent_id)
-
         else:
             super().do_GET()
 
@@ -118,14 +250,12 @@ class VibeHandler(SimpleHTTPRequestHandler):
             data = json.loads(body)
 
             prompt = data.get("prompt", "")
-            agent_type = data.get("agent_type", "general-purpose")
             skills = data.get("skills", [])
 
             if not prompt:
                 self.send_json({"error": "No prompt provided"}, 400)
                 return
 
-            # Build full prompt with skill context
             full_prompt = prompt
             if skills:
                 skill_list = "\n".join(f"- /{s['name']} ({s['type']}): {s.get('desc', '')}" for s in skills)
@@ -161,12 +291,10 @@ class VibeHandler(SimpleHTTPRequestHandler):
                     self.send_json({"status": "stopped"})
                 else:
                     self.send_json({"error": "Agent not found"}, 404)
-
         else:
             self.send_json({"error": "Not found"}, 404)
 
     def stream_agent(self, agent_id):
-        """Server-Sent Events stream for agent output."""
         with agent_lock:
             agent = active_agents.get(agent_id)
 
@@ -191,7 +319,6 @@ class VibeHandler(SimpleHTTPRequestHandler):
                 if msg.get("type") == "done":
                     break
             except queue.Empty:
-                # Send keepalive
                 self.wfile.write(b": keepalive\n\n")
                 self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
@@ -205,7 +332,6 @@ class VibeHandler(SimpleHTTPRequestHandler):
         self.wfile.write(json.dumps(data).encode())
 
     def serve_html(self):
-        """Serve the vibe-office.html if it exists, otherwise a message."""
         html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vibe-office.html")
         if os.path.exists(html_path):
             self.send_response(200)
@@ -226,7 +352,6 @@ class VibeHandler(SimpleHTTPRequestHandler):
 
 
 class ThreadedHTTPServer(HTTPServer):
-    """Handle requests in separate threads."""
     def process_request(self, request, client_address):
         thread = threading.Thread(target=self._handle, args=(request, client_address), daemon=True)
         thread.start()
@@ -241,7 +366,6 @@ class ThreadedHTTPServer(HTTPServer):
 
 
 if __name__ == "__main__":
-    # Auto-generate HTML if not present
     html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vibe-office.html")
     script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vibe-office.sh")
     if not os.path.exists(html_path) and os.path.exists(script_path):
