@@ -54,7 +54,7 @@ def run_agent(agent_id, prompt):
         q.put({"type": "status", "status": "running"})
 
         proc = subprocess.Popen(
-            [CLAUDE_BIN, "-p", prompt, "--no-input"],
+            [CLAUDE_BIN, "-p", prompt],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
