@@ -949,6 +949,98 @@ cat > "$OUTPUT" << 'HTMLEOF'
   }
   .agent-panel-body.collapsed { display: none; }
 
+  /* Follow-up chat input */
+  .agent-followup {
+    display: flex;
+    gap: 8px;
+    padding: 8px 12px;
+    border-top: 1px solid #2a2a4a;
+    background: rgba(102,126,234,0.04);
+    align-items: center;
+  }
+  .agent-followup input {
+    flex: 1;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 2px solid #2a2a4a;
+    background: var(--surface);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .agent-followup input:focus { border-color: var(--accent1); }
+  .agent-followup input::placeholder { color: var(--text-dim); }
+  .agent-followup button {
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 2px solid var(--accent1);
+    background: rgba(102,126,234,0.12);
+    color: var(--accent1);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 7px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .agent-followup button:hover { background: rgba(102,126,234,0.25); }
+
+  /* Fullscreen overlay for agent terminal */
+  .agent-fullscreen-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(10,10,26,0.97);
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    animation: fadeIn 0.2s ease-out;
+  }
+  .agent-fullscreen-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 2px solid #2a2a4a;
+    background: var(--surface);
+  }
+  .agent-fullscreen-header .afs-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    background: linear-gradient(90deg, var(--accent1), var(--accent3));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .agent-fullscreen-header .afs-close {
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: 2px solid var(--text-dim);
+    background: transparent;
+    color: var(--text);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .agent-fullscreen-header .afs-close:hover { border-color: var(--red); color: var(--red); }
+  .agent-fullscreen-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+  }
+  .agent-fullscreen-body .terminal-output {
+    max-height: none !important;
+    height: 100%;
+  }
+  .agent-fullscreen-footer {
+    padding: 12px 24px;
+    border-top: 2px solid #2a2a4a;
+    background: var(--surface);
+  }
+  .agent-fullscreen-footer .agent-followup {
+    border-top: none;
+    padding: 0;
+  }
+
   /* Create Agent Modal */
   .modal-overlay {
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -1149,14 +1241,29 @@ cat > "$OUTPUT" << 'HTMLEOF'
 
   /* Node card (n8n style) */
   .pipeline-node {
-    width: 520px;
+    width: 100%;
+    max-width: 520px;
     background: var(--surface);
     border: 2px solid #3a3a5a;
     border-radius: 16px;
     overflow: hidden;
-    transition: all 0.3s;
+    transition: all 0.3s ease;
     position: relative;
     box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  }
+  .pipeline-node.expanded {
+    width: calc(100% - 20px);
+    max-width: 100%;
+    z-index: 10;
+    position: relative;
+  }
+  .pipeline-node.expanded .step-terminal {
+    max-height: 70vh;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .pipeline-node.expanded .node-body {
+    padding: 16px 20px;
   }
   .pipeline-node:hover { border-color: var(--accent1); box-shadow: 0 6px 24px rgba(102,126,234,0.2); }
   .pipeline-node.active-step {
@@ -1170,6 +1277,250 @@ cat > "$OUTPUT" << 'HTMLEOF'
   }
   .pipeline-node.done-step { border-color: var(--green); }
   .pipeline-node.error-step { border-color: var(--red); }
+  .pipeline-node.on-failure-node { border-color: rgba(248,113,113,0.4); }
+  .pipeline-node.on-failure-node .node-topbar { background: rgba(248,113,113,0.08); }
+  .pipeline-node.on-failure-node .node-number { background: var(--red); }
+  .pipeline-node.waiting-step {
+    border-color: var(--orange);
+    box-shadow: 0 0 30px rgba(251,146,60,0.25), 0 6px 24px rgba(0,0,0,0.3);
+    animation: nodeWaitGlow 1.5s ease-in-out infinite;
+  }
+  @keyframes nodeWaitGlow {
+    0%, 100% { box-shadow: 0 0 20px rgba(251,146,60,0.2), 0 6px 24px rgba(0,0,0,0.3); }
+    50% { box-shadow: 0 0 40px rgba(251,146,60,0.4), 0 6px 24px rgba(0,0,0,0.3); }
+  }
+  .step-status-indicator.waiting {
+    background: rgba(251,146,60,0.08);
+    color: var(--orange);
+  }
+
+  /* DAG level row — each level rendered as a horizontal row */
+  .dag-level {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 0 10px;
+  }
+
+  /* DAG node column — wire + node + add-child button stacked vertically */
+  .dag-node-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    position: relative;
+    width: 520px;
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  /* Responsive sizes when multiple parallel nodes */
+  .dag-level.dag-size-md .dag-node-col { width: 420px; }
+  .dag-level.dag-size-md .pipeline-node { max-width: 420px; }
+  .dag-level.dag-size-md .node-prompt { min-height: 50px; font-size: 11px; }
+  .dag-level.dag-size-md .node-name-input { max-width: 150px; font-size: 9px; }
+
+  .dag-level.dag-size-sm .dag-node-col { width: 320px; }
+  .dag-level.dag-size-sm .pipeline-node { max-width: 320px; }
+  .dag-level.dag-size-sm .node-prompt { min-height: 40px; font-size: 11px; }
+  .dag-level.dag-size-sm .node-name-input { max-width: 110px; font-size: 8px; }
+  .dag-level.dag-size-sm .node-topbar { padding: 8px 10px; }
+  .dag-level.dag-size-sm .node-body { padding: 8px 10px; }
+  .dag-level.dag-size-sm .node-number { width: 24px; height: 24px; min-width: 24px; font-size: 8px; }
+
+  .dag-level.dag-size-xs .dag-node-col { width: 240px; }
+  .dag-level.dag-size-xs .pipeline-node { max-width: 240px; }
+  .dag-level.dag-size-xs .node-prompt { min-height: 36px; font-size: 10px; }
+  .dag-level.dag-size-xs .node-name-input { max-width: 80px; font-size: 7px; }
+  .dag-level.dag-size-xs .node-topbar { padding: 6px 8px; }
+  .dag-level.dag-size-xs .node-body { padding: 6px 8px; }
+  .dag-level.dag-size-xs .node-number { width: 20px; height: 20px; min-width: 20px; font-size: 7px; }
+  .dag-level.dag-size-xs .node-agent-row { font-size: 10px; }
+  .dag-level.dag-size-xs .node-agent-select { font-size: 10px; }
+  .dag-level.dag-size-xs .dag-add-child { width: 22px; height: 22px; font-size: 14px; }
+  .dag-level.dag-size-xs .wire-condition select { font-size: 9px; min-width: 120px; padding: 3px 6px; }
+
+  /* Trigger badge on node header */
+  .dag-trigger-badge {
+    font-size: 8px;
+    font-family: Inter, sans-serif;
+    font-weight: 600;
+    margin-left: 4px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .dag-trigger-badge.fail { color: var(--red); background: rgba(248,113,113,0.1); }
+  .dag-trigger-badge.merge { color: var(--accent3); background: rgba(240,147,251,0.1); }
+
+  /* Add-child "+" button below each node */
+  .dag-add-child {
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    border: 2px dashed #3a3a5a;
+    background: var(--surface);
+    color: var(--text-dim);
+    font-size: 18px;
+    cursor: pointer;
+    margin-top: 4px;
+    transition: all 0.2s;
+    z-index: 3;
+    position: relative;
+  }
+  .dag-add-child:hover { border-color: var(--accent1); color: var(--accent1); background: rgba(102,126,234,0.08); }
+
+  /* Add-child popup */
+  .dag-add-popup {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface2);
+    border: 2px solid var(--accent1);
+    border-radius: 12px;
+    padding: 8px;
+    z-index: 100;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    min-width: 240px;
+  }
+  .dag-add-popup.visible { display: block; }
+
+  /* Merge button between levels */
+  .dag-merge-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+  }
+  .dag-merge-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 2px dashed var(--accent3);
+    background: rgba(240,147,251,0.06);
+    color: var(--accent3);
+    font-family: 'Press Start 2P', monospace;
+    font-size: 7px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .dag-merge-btn:hover {
+    border-style: solid;
+    background: rgba(240,147,251,0.15);
+    box-shadow: 0 0 12px rgba(240,147,251,0.2);
+  }
+  .dag-merge-lines {
+    width: 40px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent3), transparent);
+  }
+
+  /* Parent tags on merge nodes */
+  .dag-parent-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 4px 8px;
+    justify-content: center;
+  }
+  .dag-parent-tag {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 6px;
+    padding: 2px 6px;
+    border-radius: 8px;
+    background: rgba(240,147,251,0.1);
+    color: var(--accent3);
+    border: 1px solid rgba(240,147,251,0.3);
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .dag-parent-tag .remove-parent {
+    cursor: pointer;
+    opacity: 0.6;
+    font-size: 8px;
+  }
+  .dag-parent-tag .remove-parent:hover { opacity: 1; color: var(--red); }
+
+  /* Add step popover menu */
+  .add-step-menu {
+    position: relative;
+    display: inline-block;
+  }
+  .add-step-menu-popup {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface2);
+    border: 2px solid var(--accent1);
+    border-radius: 12px;
+    padding: 8px;
+    z-index: 100;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    min-width: 240px;
+  }
+  .add-step-menu-popup.visible { display: block; }
+  .add-step-choice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    transition: all 0.15s;
+  }
+  .add-step-choice:hover { background: rgba(102,126,234,0.12); }
+  .add-step-choice .choice-icon {
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .add-step-choice .choice-desc {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-weight: 400;
+    margin-top: 2px;
+  }
+
+  /* DAG wire connector between levels */
+  .dag-wire {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 40px;
+    position: relative;
+    z-index: 1;
+  }
+  .dag-wire .wire-line {
+    width: 2px; flex: 1;
+    background: linear-gradient(180deg, #3a3a5a, #4a4a6a);
+    transition: background 0.3s;
+  }
+  .dag-wire .wire-arrow {
+    width: 0; height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 7px solid #4a4a6a;
+    transition: border-top-color 0.3s;
+  }
+  .dag-wire.on-failure .wire-line { background: var(--red); opacity: 0.5; }
+  .dag-wire.on-failure .wire-arrow { border-top-color: var(--red); opacity: 0.5; }
+  .dag-wire.on-all-parents .wire-line { background: linear-gradient(180deg, var(--accent3), #3a3a5a); }
+  .dag-wire.on-all-parents .wire-arrow { border-top-color: var(--accent3); }
 
   /* Node top bar with number + agent icon */
   .node-topbar {
@@ -1298,7 +1649,7 @@ cat > "$OUTPUT" << 'HTMLEOF'
     display: flex; flex-direction: column;
     align-items: center;
     padding: 0;
-    height: 40px;
+    height: 56px;
     position: relative;
   }
   .wire-line {
@@ -1339,6 +1690,34 @@ cat > "$OUTPUT" << 'HTMLEOF'
     white-space: nowrap;
   }
 
+  /* Interactive connector condition selector */
+  .wire-condition {
+    position: absolute;
+    right: calc(50% + 14px);
+    top: 50%; transform: translateY(-50%);
+    z-index: 2;
+  }
+  .wire-condition select {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent1);
+    background: var(--surface);
+    border: 2px solid rgba(102,126,234,0.3);
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s;
+    min-width: 180px;
+  }
+  .wire-condition select:hover { border-color: var(--accent1); background: var(--surface2); }
+  .wire-condition select:focus { border-color: var(--accent1); box-shadow: 0 0 8px rgba(102,126,234,0.3); }
+  .wire-condition select.on-fail { color: var(--red); border-color: rgba(248,113,113,0.4); }
+  .wire-condition select.on-branches { color: var(--accent3); border-color: rgba(240,147,251,0.4); }
+  /* Hide connector when sibling node is expanded */
+  .pipeline-wire { z-index: 1; }
+
   .step-remove {
     width: 28px; height: 28px;
     display: flex; align-items: center; justify-content: center;
@@ -1375,18 +1754,91 @@ cat > "$OUTPUT" << 'HTMLEOF'
     color: var(--red);
   }
 
-  /* Step terminal (activity feed per step) */
+  /* Step terminal (activity feed per step) — collapsed by default, toggle on click */
   .step-terminal {
     display: none;
     margin-top: 10px;
-    max-height: 300px;
+    max-height: 500px;
     overflow-y: auto;
     background: #0a0a14;
     border: 1px solid #334;
     border-radius: 8px;
-    padding: 10px;
+    padding: 12px;
+    font-size: 13px;
+    line-height: 1.5;
   }
   .step-terminal.visible { display: block; }
+  .step-terminal.has-content { border-color: var(--accent1); }
+  .expanded .step-terminal { max-height: 600px; }
+
+  /* Step output block */
+  .step-output-block {
+    margin-top: 8px;
+    padding: 10px;
+    background: rgba(102,126,234,0.06);
+    border: 1px solid rgba(102,126,234,0.2);
+    border-radius: 6px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .step-output-block .output-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: var(--accent1);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+  }
+
+  /* Clickable step toggle indicator */
+  .step-toggle-bar {
+    display: none;
+    margin-top: 8px;
+    padding: 8px 14px;
+    background: rgba(102,126,234,0.08);
+    border: 1px solid rgba(102,126,234,0.15);
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: var(--accent1);
+    text-align: center;
+    transition: all 0.2s;
+    user-select: none;
+  }
+  .step-toggle-bar:hover { background: rgba(102,126,234,0.2); border-color: var(--accent1); }
+  .step-toggle-bar.has-content { display: block; }
+  /* Also show during active step execution */
+  .active-step .step-toggle-bar,
+  .done-step .step-toggle-bar,
+  .error-step .step-toggle-bar { display: block; }
+
+  /* Final output block in execution log */
+  .wf-final-output {
+    margin-top: 10px;
+    padding: 12px;
+    background: rgba(74,222,128,0.06);
+    border: 1px solid rgba(74,222,128,0.2);
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  .wf-final-output .output-label {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 8px;
+    color: var(--green);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+  }
 
   /* Responsive */
   @media (max-width: 900px) {
@@ -1574,6 +2026,7 @@ cat > "$OUTPUT" << 'HTMLEOF'
         <div class="lab-actions" style="margin:0">
           <button class="lab-btn primary" onclick="runWorkflow()" id="runWfBtn" style="background:linear-gradient(135deg,var(--orange),var(--accent2))">&#x25B6; RUN</button>
           <button class="lab-btn secondary" onclick="saveWorkflow()">&#x1F4BE; SAVE</button>
+          <button class="lab-btn secondary" onclick="cloneWorkflow()" title="Clone this workflow">&#x1F4CB; CLONE</button>
           <button class="lab-btn danger" onclick="clearWorkflow()">CLEAR</button>
         </div>
       </div>
@@ -1585,7 +2038,7 @@ cat > "$OUTPUT" << 'HTMLEOF'
         </div>
 
         <div style="display:flex;justify-content:center;margin-top:16px">
-          <button class="lab-btn secondary" onclick="addPipelineStep()" style="font-size:8px;border-style:dashed">+ ADD STEP</button>
+          <button class="lab-btn secondary" onclick="addRootStep()" style="font-size:8px;border-style:dashed">+ ADD ROOT STEP</button>
         </div>
       </div>
 
@@ -2289,12 +2742,17 @@ function createAgentPanel(agentId, agentTypeName, agentEmoji, promptPreview) {
         </div>
       </div>
       <div class="ap-right">
+        <button class="lab-btn" onclick="event.stopPropagation(); openAgentFullscreen('${agentId}', '${escapeHtml(agentTypeName)}', '${agentEmoji}')" style="padding:3px 8px;font-size:7px;border-color:var(--accent1);color:var(--accent1)">FULLSCREEN</button>
         <button class="lab-btn danger" onclick="event.stopPropagation(); stopAgent('${agentId}')" id="stop-${agentId}" style="padding:3px 8px;font-size:7px">STOP</button>
         <span class="ap-toggle" id="toggle-${agentId}">&#x25BC;</span>
       </div>
     </div>
     <div class="agent-panel-body" id="body-${agentId}">
       <div class="terminal-output" id="term-${agentId}"><span class="terminal-cursor"></span></div>
+    </div>
+    <div class="agent-followup" id="followup-${agentId}" style="display:none">
+      <input type="text" id="followup-input-${agentId}" placeholder="Send a follow-up message..." onkeydown="if(event.key==='Enter')sendFollowup('${agentId}')">
+      <button onclick="sendFollowup('${agentId}')">SEND</button>
     </div>
   `;
 
@@ -2523,9 +2981,14 @@ function streamAgent(agentId) {
       const cursor = termOutput.querySelector('.terminal-cursor');
       if (cursor) cursor.remove();
       clearPendingSpinners(termOutput);
-      // Hide stop button
+      // Show follow-up input, hide stop button
       const stopBtn = document.getElementById(`stop-${agentId}`);
       if (stopBtn) stopBtn.style.display = 'none';
+      const followup = document.getElementById(`followup-${agentId}`);
+      if (followup) followup.style.display = 'flex';
+      // Also show in fullscreen if open
+      const fsFollowup = document.getElementById(`fs-followup-${agentId}`);
+      if (fsFollowup) fsFollowup.style.display = 'flex';
       updateRunningCount();
     }
   };
@@ -2537,8 +3000,143 @@ function streamAgent(agentId) {
     if (cursor) cursor.remove();
     const stopBtn = document.getElementById(`stop-${agentId}`);
     if (stopBtn) stopBtn.style.display = 'none';
+    const followup = document.getElementById(`followup-${agentId}`);
+    if (followup) followup.style.display = 'flex';
     updateRunningCount();
   };
+}
+
+async function sendFollowup(agentId) {
+  // Get input from either panel or fullscreen
+  let inputEl = document.getElementById(`followup-input-${agentId}`);
+  const fsInputEl = document.getElementById(`fs-followup-input-${agentId}`);
+  const message = (inputEl && inputEl.value.trim()) || (fsInputEl && fsInputEl.value.trim());
+  if (!message) return;
+
+  // Clear both inputs
+  if (inputEl) inputEl.value = '';
+  if (fsInputEl) fsInputEl.value = '';
+
+  // Hide follow-up inputs, show stop button
+  const followup = document.getElementById(`followup-${agentId}`);
+  if (followup) followup.style.display = 'none';
+  const fsFollowup = document.getElementById(`fs-followup-${agentId}`);
+  if (fsFollowup) fsFollowup.style.display = 'none';
+  const stopBtn = document.getElementById(`stop-${agentId}`);
+  if (stopBtn) stopBtn.style.display = '';
+
+  // Add user message to terminal
+  const termOutput = document.getElementById(`term-${agentId}`);
+  if (termOutput) {
+    addActivityEvent(termOutput, `
+      <div class="activity-event" style="border-left:3px solid var(--accent1);margin:8px 0">
+        <div class="ae-icon">&#x1F464;</div>
+        <div class="ae-body">
+          <div class="ae-title" style="color:var(--accent1)">You</div>
+          <div class="ae-message">${escapeHtml(message)}</div>
+        </div>
+      </div>`);
+  }
+
+  // Mirror to fullscreen terminal if open
+  const fsTerm = document.getElementById(`fs-term-${agentId}`);
+  if (fsTerm) {
+    addActivityEvent(fsTerm, `
+      <div class="activity-event" style="border-left:3px solid var(--accent1);margin:8px 0">
+        <div class="ae-icon">&#x1F464;</div>
+        <div class="ae-body">
+          <div class="ae-title" style="color:var(--accent1)">You</div>
+          <div class="ae-message">${escapeHtml(message)}</div>
+        </div>
+      </div>`);
+  }
+
+  try {
+    const res = await fetch('/api/followup', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ agent_id: agentId, message }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      showToast('FOLLOW-UP FAILED: ' + data.error);
+      if (followup) followup.style.display = 'flex';
+      if (fsFollowup) fsFollowup.style.display = 'flex';
+      return;
+    }
+
+    // Update status and re-stream
+    updateAgentStatus(agentId, 'running');
+    runningAgents[agentId].status = 'running';
+    streamAgent(agentId);
+
+  } catch(e) {
+    showToast('FOLLOW-UP FAILED: ' + e.message);
+    if (followup) followup.style.display = 'flex';
+    if (fsFollowup) fsFollowup.style.display = 'flex';
+  }
+}
+
+function openAgentFullscreen(agentId, agentName, agentEmoji) {
+  // Close any existing fullscreen
+  closeAgentFullscreen();
+
+  const termOutput = document.getElementById(`term-${agentId}`);
+  const termContent = termOutput ? termOutput.innerHTML : '';
+
+  const agent = runningAgents[agentId];
+  const isRunning = agent && agent.status === 'running';
+  const showFollowup = !isRunning;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'agent-fullscreen-overlay';
+  overlay.id = 'agentFullscreenOverlay';
+  overlay.innerHTML = `
+    <div class="agent-fullscreen-header">
+      <div class="afs-title">${agentEmoji || '&#x1F916;'} ${agentName || 'AGENT'}</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="agent-status-badge ${agent ? agent.status : 'done'}" id="fs-status-${agentId}">${agent ? agent.status.toUpperCase() : 'DONE'}</span>
+        <button class="afs-close" onclick="closeAgentFullscreen()">ESC CLOSE</button>
+      </div>
+    </div>
+    <div class="agent-fullscreen-body">
+      <div class="terminal-output" id="fs-term-${agentId}" style="max-height:none;height:100%">${termContent}</div>
+    </div>
+    <div class="agent-fullscreen-footer">
+      <div class="agent-followup" id="fs-followup-${agentId}" style="display:${showFollowup ? 'flex' : 'none'}">
+        <input type="text" id="fs-followup-input-${agentId}" placeholder="Send a follow-up message..." onkeydown="if(event.key==='Enter')sendFollowup('${agentId}')">
+        <button onclick="sendFollowup('${agentId}')">SEND</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Sync new events from the panel terminal to fullscreen
+  if (termOutput) {
+    const observer = new MutationObserver(() => {
+      const fsTerm = document.getElementById(`fs-term-${agentId}`);
+      if (fsTerm) fsTerm.innerHTML = termOutput.innerHTML;
+    });
+    observer.observe(termOutput, { childList: true, subtree: true });
+    overlay._observer = observer;
+  }
+
+  // ESC key to close
+  overlay._escHandler = (e) => { if (e.key === 'Escape') closeAgentFullscreen(); };
+  document.addEventListener('keydown', overlay._escHandler);
+
+  // Focus input
+  const fsInput = document.getElementById(`fs-followup-input-${agentId}`);
+  if (fsInput && showFollowup) setTimeout(() => fsInput.focus(), 100);
+}
+
+function closeAgentFullscreen() {
+  const overlay = document.getElementById('agentFullscreenOverlay');
+  if (!overlay) return;
+  if (overlay._observer) overlay._observer.disconnect();
+  if (overlay._escHandler) document.removeEventListener('keydown', overlay._escHandler);
+  overlay.remove();
 }
 
 async function stopAgent(agentId) {
@@ -3060,19 +3658,126 @@ renderBundledSkills = function() {
 // WORKFLOWS
 // =============================================
 const WF_STORAGE_KEY = 'vibeOfficeWorkflows';
-let wfSteps = []; // [{name, prompt, skills, agentId}]
+let wfSteps = []; // DAG: [{id, name, prompt, skills, agentId, parentIds, trigger}]
 let savedWorkflows = [];
 let selectedWorkflowIdx = -1;
 let activeWorkflowId = null;
 let activeWorkflowEvtSource = null;
 
 // Track running workflow status per workflow index
-// workflowRunStatus[idx] = {status:'running'|'done'|'error', wfId, steps, wfTermHtml}
 const workflowRunStatus = {};
 // Unsaved drafts: wfDrafts[idx] = {name, steps} — auto-saved on switch
 const wfDrafts = {};
 // Draft for "new" (unsaved) workflow
 let newWfDraft = null;
+
+// Generate unique step ID
+let _stepIdCounter = 0;
+function generateStepId() {
+  _stepIdCounter++;
+  return 's' + Date.now().toString(36) + _stepIdCounter.toString(36);
+}
+
+// Find a step by ID
+function findStep(id) { return wfSteps.find(s => s.id === id); }
+// Find step index by ID
+function findStepIdx(id) { return wfSteps.findIndex(s => s.id === id); }
+// Get children of a step
+function getChildren(parentId) { return wfSteps.filter(s => s.parentIds.includes(parentId)); }
+// Get root steps (no parents)
+function getRootSteps() { return wfSteps.filter(s => s.parentIds.length === 0); }
+
+// Compute DAG levels using BFS from roots
+function computeLevels() {
+  const levels = {};
+  const visited = new Set();
+  const queue = [];
+  // Start with root nodes at level 0
+  wfSteps.forEach(s => {
+    if (s.parentIds.length === 0) {
+      levels[s.id] = 0;
+      queue.push(s.id);
+      visited.add(s.id);
+    }
+  });
+  while (queue.length > 0) {
+    const curr = queue.shift();
+    const children = getChildren(curr);
+    children.forEach(child => {
+      const newLevel = levels[curr] + 1;
+      // Take max level across all parents
+      levels[child.id] = Math.max(levels[child.id] || 0, newLevel);
+      if (!visited.has(child.id)) {
+        visited.add(child.id);
+        queue.push(child.id);
+      }
+    });
+  }
+  // Handle orphan nodes (shouldn't happen but safety)
+  wfSteps.forEach(s => {
+    if (levels[s.id] === undefined) levels[s.id] = 0;
+  });
+  return levels;
+}
+
+// Group steps by level
+function groupByLevel() {
+  const levels = computeLevels();
+  const groups = {};
+  wfSteps.forEach(s => {
+    const lvl = levels[s.id];
+    if (!groups[lvl]) groups[lvl] = [];
+    groups[lvl].push(s);
+  });
+  return { groups, levels };
+}
+
+// Migrate old linear+branch format to DAG
+function migrateToDAG(oldSteps) {
+  if (!oldSteps || oldSteps.length === 0) return [];
+  // Check if already DAG format
+  if (oldSteps[0].id && oldSteps[0].parentIds) return oldSteps;
+
+  const newSteps = [];
+  let prevId = null;
+  oldSteps.forEach((s, idx) => {
+    const id = generateStepId();
+    const parentIds = prevId ? [prevId] : [];
+    newSteps.push({
+      id, name: s.name || 'Step ' + (idx + 1),
+      prompt: s.prompt || '', skills: s.skills || [],
+      agentId: s.agentId || null,
+      parentIds,
+      trigger: s.trigger || 'on_complete',
+    });
+    // Convert branches to parallel children
+    if (s.branches && s.branches.length > 0) {
+      s.branches.forEach((b, bi) => {
+        const bId = generateStepId();
+        newSteps.push({
+          id: bId, name: b.name || 'Branch ' + String.fromCharCode(65 + bi),
+          prompt: b.prompt || '', skills: b.skills || [],
+          agentId: b.agentId || null,
+          parentIds: [id],
+          trigger: 'on_complete',
+        });
+      });
+    }
+    // Convert onFailure to a child with on_failure trigger
+    if (s.onFailure && s.onFailure.prompt) {
+      const fId = generateStepId();
+      newSteps.push({
+        id: fId, name: s.onFailure.name || 'Fallback',
+        prompt: s.onFailure.prompt || '', skills: s.onFailure.skills || [],
+        agentId: s.onFailure.agentId || null,
+        parentIds: [id],
+        trigger: 'on_failure',
+      });
+    }
+    prevId = id;
+  });
+  return newSteps;
+}
 
 // Collect all available skills for the step skill picker
 function getAllSkillItems() {
@@ -3092,7 +3797,7 @@ function stashCurrentDraft() {
   syncStepPrompts();
   const draft = {
     name: document.getElementById('wfName').value,
-    steps: wfSteps.map(s => ({ name: s.name, prompt: s.prompt, skills: [...s.skills], agentId: s.agentId })),
+    steps: wfSteps.map(serializeStep),
   };
   if (selectedWorkflowIdx >= 0) {
     wfDrafts[selectedWorkflowIdx] = draft;
@@ -3112,35 +3817,135 @@ function newWorkflow() {
   } else {
     document.getElementById('wfName').value = '';
     wfSteps = [];
-    addPipelineStep();
-    addPipelineStep();
+    addRootStep();
   }
   document.getElementById('wfExecutionStatus').style.display = 'none';
   renderPipeline();
   renderWfList();
 }
 
-function addPipelineStep() {
+function addRootStep() {
   wfSteps.push({
-    name: `Step ${wfSteps.length + 1}`,
+    id: generateStepId(),
+    name: 'Step ' + (wfSteps.length + 1),
     prompt: '',
     skills: [],
     agentId: null,
+    parentIds: [],
+    trigger: 'on_complete',
   });
   renderPipeline();
 }
 
-function removePipelineStep(idx) {
+function addChildStep(parentId, trigger) {
+  const parentStep = findStep(parentId);
+  const childCount = getChildren(parentId).length;
+  const label = trigger === 'on_failure' ? 'Fallback' : 'Step ' + (wfSteps.length + 1);
+  wfSteps.push({
+    id: generateStepId(),
+    name: label,
+    prompt: '',
+    skills: [],
+    agentId: null,
+    parentIds: [parentId],
+    trigger: trigger || 'on_complete',
+  });
+  closeAllDagPopups();
+  renderPipeline();
+}
+
+function addMergeStep(parentIds) {
+  if (!parentIds || parentIds.length === 0) return;
+  wfSteps.push({
+    id: generateStepId(),
+    name: 'Merge Step',
+    prompt: '',
+    skills: [],
+    agentId: null,
+    parentIds: [...parentIds],
+    trigger: 'on_all_parents',
+  });
+  closeAllDagPopups();
+  renderPipeline();
+}
+
+function addParentToStep(stepId, parentId) {
+  const step = findStep(stepId);
+  if (!step || step.parentIds.includes(parentId) || stepId === parentId) return;
+  // Prevent cycles: parentId must not be a descendant of stepId
+  function isDescendant(fromId, targetId) {
+    const children = getChildren(fromId);
+    for (const c of children) {
+      if (c.id === targetId || isDescendant(c.id, targetId)) return true;
+    }
+    return false;
+  }
+  if (isDescendant(stepId, parentId)) {
+    showToast('CANNOT LINK: WOULD CREATE CYCLE');
+    return;
+  }
+  step.parentIds.push(parentId);
+  if (step.parentIds.length > 1) step.trigger = 'on_all_parents';
+  renderPipeline();
+}
+
+function removeParentFromStep(stepId, parentId) {
+  const step = findStep(stepId);
+  if (!step) return;
+  step.parentIds = step.parentIds.filter(pid => pid !== parentId);
+  if (step.parentIds.length <= 1 && step.trigger === 'on_all_parents') {
+    step.trigger = 'on_complete';
+  }
+  if (step.parentIds.length === 0) {
+    // Became a root step
+  }
+  renderPipeline();
+}
+
+function removeStep(stepId) {
   if (wfSteps.length <= 1) {
     showToast('NEED AT LEAST 1 STEP');
     return;
   }
-  wfSteps.splice(idx, 1);
-  // Renumber
-  wfSteps.forEach((s, i) => {
-    if (s.name.match(/^Step \d+$/)) s.name = `Step ${i + 1}`;
+  // Re-parent children to this step's parents
+  const step = findStep(stepId);
+  if (!step) return;
+  const children = getChildren(stepId);
+  children.forEach(child => {
+    child.parentIds = child.parentIds.filter(pid => pid !== stepId);
+    // Add this step's parents as replacement
+    step.parentIds.forEach(pid => {
+      if (!child.parentIds.includes(pid)) child.parentIds.push(pid);
+    });
+    // If no parents left, make root
+    if (child.parentIds.length === 0 && step.parentIds.length === 0) {
+      // keep as root
+    }
   });
+  wfSteps = wfSteps.filter(s => s.id !== stepId);
   renderPipeline();
+}
+
+function closeAllDagPopups() {
+  document.querySelectorAll('.dag-add-popup').forEach(p => p.classList.remove('visible'));
+}
+
+function toggleDagAddPopup(btn) {
+  const popup = btn.nextElementSibling;
+  if (!popup) return;
+  const wasVisible = popup.classList.contains('visible');
+  closeAllDagPopups();
+  if (!wasVisible) {
+    popup.classList.add('visible');
+    setTimeout(() => {
+      document.addEventListener('click', function closePopup(e) {
+        if (!popup.contains(e.target) && e.target !== btn) {
+          popup.classList.remove('visible');
+          document.removeEventListener('click', closePopup);
+        }
+      });
+    }, 10);
+  }
 }
 
 // Get all agent options (built-in + custom)
@@ -3157,89 +3962,230 @@ function getAgentOptions() {
 
 function renderPipeline() {
   const builder = document.getElementById('pipelineBuilder');
-  builder.innerHTML = '';
+
+  if (wfSteps.length === 0) { builder.innerHTML = ''; return; }
 
   const allSkills = getAllSkillItems();
   const agentOptions = getAgentOptions();
+  const { groups, levels } = groupByLevel();
+  const maxLevel = Math.max(...Object.values(levels), 0);
 
-  wfSteps.forEach((step, idx) => {
-    // Wire connector (except before first step)
-    if (idx > 0) {
-      const wireLabel = idx === 1 ? 'OUTPUT &#x2192; CONTEXT' : 'PASS THROUGH';
-      builder.innerHTML += `
-        <div class="pipeline-wire" id="connector-${idx}">
-          <div class="wire-line"></div>
-          <div class="wire-arrow"></div>
-          <div class="wire-label">${wireLabel}</div>
-        </div>`;
+  // Build the ENTIRE HTML as a string first, then set innerHTML once
+  let html = '';
+
+  for (let lvl = 0; lvl <= maxLevel; lvl++) {
+    const stepsAtLevel = groups[lvl] || [];
+    if (stepsAtLevel.length === 0) continue;
+
+    // Compute node size class based on count at this level
+    const count = stepsAtLevel.length;
+    const sizeClass = count >= 4 ? 'dag-size-xs' : (count === 3 ? 'dag-size-sm' : (count === 2 ? 'dag-size-md' : ''));
+
+    // Single level row — each column has its own wire + node + add-button
+    html += '<div class="dag-level ' + sizeClass + '" data-level="' + lvl + '">';
+    stepsAtLevel.forEach(step => {
+      const stepIdx = findStepIdx(step.id);
+      const hasParents = step.parentIds.length > 0;
+      const isMultiParent = step.parentIds.length > 1;
+
+      // Wire connector above this node (inside the column)
+      let wireHtml = '';
+      if (hasParents) {
+        const trigger = step.trigger || 'on_complete';
+        const wireClass = trigger === 'on_failure' ? 'on-failure' : (trigger === 'on_all_parents' ? 'on-all-parents' : '');
+        const selectClass = trigger === 'on_failure' ? 'on-fail' : (trigger === 'on_all_parents' ? 'on-branches' : '');
+        wireHtml = '<div class="dag-wire ' + wireClass + '" data-step-id="' + step.id + '">'
+          + '<div class="wire-line"></div>'
+          + '<div class="wire-arrow"></div>'
+          + '<div class="wire-condition">'
+          +   '<select class="' + selectClass + '" onchange="setStepTrigger(\'' + step.id + '\', this.value)">'
+          +     '<option value="on_complete" ' + (trigger === 'on_complete' ? 'selected' : '') + '>When parent finishes</option>'
+          +     '<option value="on_all_parents" ' + (trigger === 'on_all_parents' ? 'selected' : '') + '>When all parents done</option>'
+          +     '<option value="on_failure" ' + (trigger === 'on_failure' ? 'selected' : '') + '>On failure</option>'
+          +   '</select>'
+          + '</div>'
+          + '</div>';
+      }
+
+      // Parent tags for multi-parent (merge) nodes
+      let parentTagsHtml = '';
+      if (isMultiParent) {
+        let tags = '';
+        step.parentIds.forEach(pid => {
+          const parent = findStep(pid);
+          const pName = parent ? parent.name : pid;
+          tags += '<span class="dag-parent-tag">'
+            + escapeHtml(pName)
+            + '<span class="remove-parent" onclick="removeParentFromStep(\'' + step.id + '\',\'' + pid + '\')" title="Disconnect">&times;</span>'
+            + '</span>';
+        });
+        parentTagsHtml = '<div class="dag-parent-tags">' + tags + '</div>';
+      }
+
+      const agentSelectHtml = agentOptions.map(a =>
+        '<option value="' + a.id + '" ' + (step.agentId === a.id ? 'selected' : '') + '>' + a.name + (a.isCustom ? ' (custom)' : '') + '</option>'
+      ).join('');
+
+      const skillsHtml = allSkills.map(s => {
+        const isActive = step.skills.some(ss => ss.name === s.name);
+        return '<div class="node-skill-toggle ' + (isActive ? 'active' : '') + '"'
+          + " onclick=\"toggleStepSkillById('" + step.id + "', '" + s.name.replace(/'/g, "\\'") + "', this)\""
+          + ' title="' + escapeHtml(s.desc) + '">' + getEmoji(s.name) + ' ' + s.name + '</div>';
+      }).join('');
+
+      const selectedAgent = step.agentId ? agentOptions.find(a => a.id === step.agentId) : null;
+      const agentBadge = selectedAgent
+        ? '<span style="font-size:14px">' + selectedAgent.emoji + '</span>'
+        : '<span style="font-size:14px">&#x1F916;</span>';
+
+      const triggerBadge = step.trigger === 'on_failure'
+        ? '<span class="dag-trigger-badge fail">&#x26A0; FAIL</span>'
+        : (step.trigger === 'on_all_parents'
+          ? '<span class="dag-trigger-badge merge">&#x1F500; MERGE</span>'
+          : '');
+
+      const nodeClass = step.trigger === 'on_failure' ? 'pipeline-node on-failure-node' : 'pipeline-node';
+      const hasChildren = getChildren(step.id).length > 0;
+
+      // Build "connect to existing step" options for the add popup
+      // Show all steps that are NOT this step, NOT already a child, and would not create a cycle
+      let connectHtml = '';
+      const potentialChildren = wfSteps.filter(s => {
+        if (s.id === step.id) return false;
+        if (s.parentIds.includes(step.id)) return false; // already connected
+        return true;
+      });
+      if (potentialChildren.length > 0) {
+        connectHtml = '<div style="border-top:1px solid rgba(255,255,255,0.08);margin-top:4px;padding-top:4px">'
+          + '<div style="font-size:7px;color:var(--text-dim);padding:2px 4px;margin-bottom:2px">CONNECT TO EXISTING:</div>'
+          + '<select style="width:100%;font-size:7px;padding:4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;font-family:\'Press Start 2P\',monospace" '
+          +   'onchange="if(this.value){addParentToStep(this.value,\'' + step.id + '\');this.value=\'\'}">'
+          +   '<option value="">-- Pick a step --</option>';
+        potentialChildren.forEach(s => {
+          connectHtml += '<option value="' + s.id + '">' + escapeHtml(s.name) + '</option>';
+        });
+        connectHtml += '</select></div>';
+      }
+
+      html += '<div class="dag-node-col">'
+        + wireHtml
+        + parentTagsHtml
+        + '<div class="' + nodeClass + '" id="step-' + step.id + '" data-step-id="' + step.id + '">'
+        + (hasParents ? '<div class="node-port input-port"></div>' : '')
+        + '<div class="node-topbar">'
+        +   '<div class="node-topbar-left">'
+        +     '<div class="node-number">' + (stepIdx + 1) + '</div>'
+        +     '<input type="text" class="node-name-input" value="' + escapeHtml(step.name) + '"'
+        +       " onchange=\"findStep('" + step.id + "').name = this.value\" placeholder=\"Step name...\">"
+        +     triggerBadge
+        +   '</div>'
+        +   '<div class="node-topbar-right">'
+        +     agentBadge
+        +     '<div class="step-remove" onclick="removeStep(\'' + step.id + '\')" title="Remove step">&times;</div>'
+        +   '</div>'
+        + '</div>'
+        + '<div class="node-body">'
+        +   '<div class="node-agent-row">'
+        +     '<span class="node-agent-label">AGENT</span>'
+        +     '<select class="node-agent-select" onchange="setStepAgentById(\'' + step.id + '\', this.value)">'
+        +       '<option value="">-- No agent --</option>'
+        +       agentSelectHtml
+        +     '</select>'
+        +   '</div>'
+        +   '<textarea class="node-prompt" data-step-id="' + step.id + '" placeholder="What should this step do?&#10;'
+        +     (hasParents ? '(receives parent output as context)' : '(root step — starts the pipeline)')
+        +     '" onchange="findStep(\'' + step.id + '\').prompt = this.value">' + escapeHtml(step.prompt) + '</textarea>'
+        +   '<div class="node-extras"><details>'
+        +     '<summary>SKILLS (' + step.skills.length + ')</summary>'
+        +     '<div class="node-extras-content">' + skillsHtml + '</div>'
+        +   '</details></div>'
+        +   '<div class="step-status-indicator" id="step-status-' + step.id + '"></div>'
+        +   '<div class="step-toggle-bar" id="step-toggle-' + step.id + '" onclick="toggleStepTerminalById(\'' + step.id + '\')">&#x25B6; VIEW DETAILS</div>'
+        +   '<div class="step-terminal" id="step-term-' + step.id + '"></div>'
+        + '</div>'
+        + '<div class="node-port output-port" style="' + (hasChildren ? '' : 'border-style:dashed') + '"></div>'
+        + '</div>'
+        + '<div style="position:relative">'
+        +   '<div class="dag-add-child" onclick="toggleDagAddPopup(this)" title="Add next step">+</div>'
+        +   '<div class="dag-add-popup">'
+        +     '<div class="add-step-choice" onclick="addChildStep(\'' + step.id + '\',\'on_complete\')">'
+        +       '<div class="choice-icon" style="background:rgba(74,222,128,0.12)">&#x2705;</div>'
+        +       '<div><div>When this finishes</div><div class="choice-desc">Runs after completion</div></div>'
+        +     '</div>'
+        +     '<div class="add-step-choice" onclick="addChildStep(\'' + step.id + '\',\'on_failure\')">'
+        +       '<div class="choice-icon" style="background:rgba(248,113,113,0.12)">&#x26A0;</div>'
+        +       '<div><div>On failure</div><div class="choice-desc">Runs if this step fails</div></div>'
+        +     '</div>'
+        +     connectHtml
+        +   '</div>'
+        + '</div>'
+        + '</div>';
+    });
+    html += '</div>';
+
+    // After each level, check if there are multiple leaf steps — show a merge button
+    const leafStepsAtLevel = stepsAtLevel.filter(s => getChildren(s.id).length === 0);
+    if (leafStepsAtLevel.length >= 2) {
+      const leafIds = leafStepsAtLevel.map(s => "'" + s.id + "'").join(',');
+      html += '<div class="dag-merge-row">'
+        + '<div class="dag-merge-lines"></div>'
+        + '<div class="dag-merge-btn" onclick="addMergeStep([' + leafIds + '])" title="Add a step that runs after all ' + leafStepsAtLevel.length + ' steps complete">'
+        + '&#x1F500; MERGE ALL ' + leafStepsAtLevel.length + ' STEPS'
+        + '</div>'
+        + '<div class="dag-merge-lines"></div>'
+        + '</div>';
     }
+  }
 
-    // Agent selector options
-    const agentSelectHtml = agentOptions.map(a =>
-      `<option value="${a.id}" ${step.agentId === a.id ? 'selected' : ''}>${a.name}${a.isCustom ? ' (custom)' : ''}</option>`
-    ).join('');
-
-    // Skills HTML
-    const skillsHtml = allSkills.map(s => {
-      const isActive = step.skills.some(ss => ss.name === s.name);
-      return `<div class="node-skill-toggle ${isActive ? 'active' : ''}"
-        onclick="toggleStepSkill(${idx}, '${s.name.replace(/'/g, "\\'")}', this)"
-        title="${escapeHtml(s.desc)}">${getEmoji(s.name)} ${s.name}</div>`;
-    }).join('');
-
-    // Agent badge
-    const selectedAgent = step.agentId ? agentOptions.find(a => a.id === step.agentId) : null;
-    const agentBadge = selectedAgent
-      ? `<span style="font-size:14px">${selectedAgent.emoji}</span>`
-      : `<span style="font-size:14px">&#x1F916;</span>`;
-
-    builder.innerHTML += `
-      <div class="pipeline-node" id="step-${idx}">
-        ${idx > 0 ? '<div class="node-port input-port" id="port-in-' + idx + '"></div>' : ''}
-        <div class="node-topbar">
-          <div class="node-topbar-left">
-            <div class="node-number">${idx + 1}</div>
-            <input type="text" class="node-name-input" value="${escapeHtml(step.name)}"
-              onchange="wfSteps[${idx}].name = this.value" placeholder="Step name...">
-          </div>
-          <div class="node-topbar-right">
-            ${agentBadge}
-            <div class="step-remove" onclick="removePipelineStep(${idx})" title="Remove step">&times;</div>
-          </div>
-        </div>
-        <div class="node-body">
-          <div class="node-agent-row">
-            <span class="node-agent-label">AGENT</span>
-            <select class="node-agent-select" onchange="setStepAgent(${idx}, this.value)">
-              <option value="">-- No agent (general) --</option>
-              ${agentSelectHtml}
-            </select>
-          </div>
-          <textarea class="node-prompt" placeholder="What should this step do?&#10;${idx > 0 ? '(receives output from Step ' + idx + ' as context)' : '(first step — starts the pipeline)'}"
-            onchange="wfSteps[${idx}].prompt = this.value">${escapeHtml(step.prompt)}</textarea>
-          <div class="node-extras">
-            <details>
-              <summary>SKILLS &amp; TOOLS (${step.skills.length} selected)</summary>
-              <div class="node-extras-content">${skillsHtml}</div>
-            </details>
-          </div>
-          <div class="step-status-indicator" id="step-status-${idx}"></div>
-          <div class="step-terminal" id="step-term-${idx}"></div>
-        </div>
-        ${idx < wfSteps.length - 1 ? '<div class="node-port output-port" id="port-out-' + idx + '"></div>' : '<div class="node-port output-port" id="port-out-' + idx + '" style="border-style:dashed"></div>'}
-      </div>`;
-  });
+  builder.innerHTML = html;
 }
 
-function setStepAgent(stepIdx, agentId) {
-  wfSteps[stepIdx].agentId = agentId || null;
+function toggleStepTerminalById(stepId) {
+  const termEl = document.getElementById(`step-term-${stepId}`);
+  const toggleEl = document.getElementById(`step-toggle-${stepId}`);
+  const nodeEl = document.getElementById(`step-${stepId}`);
+  if (!termEl) return;
+  if (termEl.classList.contains('visible')) {
+    termEl.classList.remove('visible');
+    if (nodeEl) nodeEl.classList.remove('expanded');
+    if (toggleEl) toggleEl.innerHTML = '&#x25B6; VIEW DETAILS';
+  } else {
+    termEl.classList.add('visible');
+    if (nodeEl) nodeEl.classList.add('expanded');
+    if (toggleEl) toggleEl.innerHTML = '&#x25BC; HIDE DETAILS';
+    termEl.scrollTop = termEl.scrollHeight;
+  }
+}
+
+// Legacy compat
+function toggleStepTerminal(stepIdx, suffix) {
+  const sfx = suffix || '';
+  // Try by ID first (DAG), fall back to index
+  const step = wfSteps[stepIdx];
+  if (step && step.id) {
+    toggleStepTerminalById(step.id);
+  }
+}
+
+function setStepTrigger(stepId, trigger) {
+  const step = findStep(stepId);
+  if (step) {
+    step.trigger = trigger;
+    renderPipeline();
+  }
+}
+
+function setStepAgentById(stepId, agentId) {
+  const step = findStep(stepId);
+  if (!step) return;
+  step.agentId = agentId || null;
   // If agent has bundled skills, auto-add them
   if (agentId) {
     const agent = AGENT_TYPES.find(a => a.id === agentId);
     if (agent && agent.isCustom && agent.skills) {
       agent.skills.forEach(s => {
-        if (!wfSteps[stepIdx].skills.some(ss => ss.name === s.name)) {
-          wfSteps[stepIdx].skills.push({ ...s });
+        if (!step.skills.some(ss => ss.name === s.name)) {
+          step.skills.push({ ...s });
         }
       });
     }
@@ -3247,8 +4193,9 @@ function setStepAgent(stepIdx, agentId) {
   renderPipeline();
 }
 
-function toggleStepSkill(stepIdx, skillName, el) {
-  const step = wfSteps[stepIdx];
+function toggleStepSkillById(stepId, skillName, el) {
+  const step = findStep(stepId);
+  if (!step) return;
   const allSkills = getAllSkillItems();
   const skill = allSkills.find(s => s.name === skillName);
   if (!skill) return;
@@ -3262,13 +4209,14 @@ function toggleStepSkill(stepIdx, skillName, el) {
     el.classList.add('active');
   }
 
-  // Update summary count
   const details = el.closest('details');
   if (details) {
     const summary = details.querySelector('summary');
-    summary.textContent = `SKILLS (${step.skills.length} selected)`;
+    summary.textContent = `SKILLS & TOOLS (${step.skills.length} selected)`;
   }
 }
+// Legacy compat
+function toggleStepSkill(idx, name, el) { if (wfSteps[idx]) toggleStepSkillById(wfSteps[idx].id, name, el); }
 
 function saveWorkflow() {
   const name = document.getElementById('wfName').value.trim();
@@ -3282,7 +4230,7 @@ function saveWorkflow() {
 
   const wfData = {
     name,
-    steps: wfSteps.map(s => ({ name: s.name, prompt: s.prompt, skills: s.skills, agentId: s.agentId || null })),
+    steps: wfSteps.map(serializeStep),
     createdAt: new Date().toISOString(),
   };
 
@@ -3298,16 +4246,41 @@ function saveWorkflow() {
   showToast('WORKFLOW SAVED!');
 }
 
+function cloneWorkflow() {
+  syncStepPrompts();
+  const srcName = document.getElementById('wfName').value.trim() || 'Workflow';
+  const clonedSteps = wfSteps.map(serializeStep);
+  const clonedWf = {
+    name: srcName + ' (copy)',
+    steps: clonedSteps,
+    createdAt: new Date().toISOString(),
+  };
+  savedWorkflows.push(clonedWf);
+  persistWorkflows();
+  selectedWorkflowIdx = savedWorkflows.length - 1;
+  loadWorkflow(selectedWorkflowIdx);
+  renderWfList();
+  showToast('WORKFLOW CLONED!');
+}
+
+function serializeStep(s) {
+  return {
+    id: s.id,
+    name: s.name,
+    prompt: s.prompt,
+    skills: [...(s.skills || [])],
+    agentId: s.agentId || null,
+    parentIds: [...(s.parentIds || [])],
+    trigger: s.trigger || 'on_complete',
+  };
+}
+
 function syncStepPrompts() {
-  document.querySelectorAll('.node-prompt').forEach((ta, idx) => {
-    if (wfSteps[idx]) wfSteps[idx].prompt = ta.value;
+  document.querySelectorAll('.node-prompt[data-step-id]').forEach(ta => {
+    const step = findStep(ta.dataset.stepId);
+    if (step) step.prompt = ta.value;
   });
-  document.querySelectorAll('.node-name-input').forEach((inp, idx) => {
-    if (wfSteps[idx]) wfSteps[idx].name = inp.value;
-  });
-  document.querySelectorAll('.node-agent-select').forEach((sel, idx) => {
-    if (wfSteps[idx]) wfSteps[idx].agentId = sel.value || null;
-  });
+  // Name inputs and agent selects are already bound via onchange
 }
 
 function loadWorkflow(idx) {
@@ -3322,12 +4295,11 @@ function loadWorkflow(idx) {
   // Use draft if available, otherwise use saved
   const source = wfDrafts[idx] || wf;
   document.getElementById('wfName').value = source.name;
-  wfSteps = source.steps.map(s => ({
-    name: s.name,
-    prompt: s.prompt,
+  // Migrate from old format if needed
+  wfSteps = migrateToDAG(source.steps.map(s => ({
+    ...s,
     skills: (s.skills || []).map(sk => ({ ...sk })),
-    agentId: s.agentId || null,
-  }));
+  })));
 
   // Show/hide execution log for this workflow
   const runInfo = workflowRunStatus[idx];
@@ -3344,26 +4316,24 @@ function loadWorkflow(idx) {
 
   // Restore step terminal HTML and statuses if this workflow ran
   if (runInfo && runInfo.stepStates) {
-    runInfo.stepStates.forEach((ss, i) => {
-      const stepEl = document.getElementById(`step-${i}`);
-      const statusEl = document.getElementById(`step-status-${i}`);
-      const termEl = document.getElementById(`step-term-${i}`);
+    Object.entries(runInfo.stepStates).forEach(([stepId, ss]) => {
+      const stepEl = document.getElementById(`step-${stepId}`);
+      const statusEl = document.getElementById(`step-status-${stepId}`);
+      const termEl = document.getElementById(`step-term-${stepId}`);
       if (ss.nodeClass && stepEl) stepEl.className = ss.nodeClass;
       if (ss.statusHtml && statusEl) {
         statusEl.className = ss.statusClass || 'step-status-indicator visible';
         statusEl.innerHTML = ss.statusHtml;
       }
       if (ss.termHtml && termEl) {
-        termEl.className = 'step-terminal visible';
+        termEl.className = ss.termClass || 'step-terminal has-content';
         termEl.innerHTML = ss.termHtml;
       }
-      // Ports + wires
-      const conn = document.getElementById(`connector-${i}`);
-      if (conn && ss.wireClass) conn.className = ss.wireClass;
-      const portIn = document.getElementById(`port-in-${i}`);
-      const portOut = document.getElementById(`port-out-${i}`);
-      if (portIn && ss.portInClass) portIn.className = ss.portInClass;
-      if (portOut && ss.portOutClass) portOut.className = ss.portOutClass;
+      const toggleEl = document.getElementById(`step-toggle-${stepId}`);
+      if (toggleEl && ss.toggleClass) {
+        toggleEl.className = ss.toggleClass;
+        toggleEl.innerHTML = ss.toggleHtml || '&#x25B6; VIEW DETAILS';
+      }
     });
   }
 
@@ -3414,6 +4384,9 @@ function renderWfList() {
       } else if (runInfo.status === 'stopped') {
         statusIcon = '&#x1F6D1;';
         statusBorder = 'border-left: 3px solid var(--text-dim);';
+      } else if (runInfo.status === 'waiting') {
+        statusIcon = '&#x270B;';
+        statusBorder = 'border-left: 3px solid var(--orange);';
       }
     }
 
@@ -3484,16 +4457,18 @@ async function runWorkflow() {
     return;
   }
 
-  // Reset step statuses
-  wfSteps.forEach((s, i) => {
-    const statusEl = document.getElementById(`step-status-${i}`);
-    const termEl = document.getElementById(`step-term-${i}`);
-    const stepEl = document.getElementById(`step-${i}`);
+  // Reset step statuses (ID-based)
+  wfSteps.forEach(s => {
+    const statusEl = document.getElementById(`step-status-${s.id}`);
+    const termEl = document.getElementById(`step-term-${s.id}`);
+    const stepEl = document.getElementById(`step-${s.id}`);
     if (statusEl) { statusEl.className = 'step-status-indicator'; statusEl.innerHTML = ''; }
     if (termEl) { termEl.className = 'step-terminal'; termEl.innerHTML = ''; }
-    if (stepEl) { stepEl.className = 'pipeline-step'; }
-    const conn = document.getElementById(`connector-${i}`);
-    if (conn) conn.className = 'pipeline-connector';
+    const toggleEl = document.getElementById(`step-toggle-${s.id}`);
+    if (toggleEl) { toggleEl.className = 'step-toggle-bar'; toggleEl.innerHTML = '&#x25B6; VIEW DETAILS'; }
+    if (stepEl) {
+      stepEl.className = s.trigger === 'on_failure' ? 'pipeline-node on-failure-node' : 'pipeline-node';
+    }
   });
 
   // Show execution section
@@ -3503,7 +4478,7 @@ async function runWorkflow() {
 
   const wfName = document.getElementById('wfName').value.trim() || 'Workflow';
 
-  // Build steps with agent instructions injected
+  // Build DAG steps payload with agent instructions injected
   const stepsPayload = wfSteps.map(s => {
     let prompt = '';
     if (s.agentId) {
@@ -3524,7 +4499,15 @@ async function runWorkflow() {
         });
       }
     }
-    return { name: s.name, prompt, skills: allSkills };
+
+    return {
+      id: s.id,
+      name: s.name,
+      prompt,
+      skills: allSkills,
+      parentIds: s.parentIds || [],
+      trigger: s.trigger || 'on_complete',
+    };
   });
 
   try {
@@ -3534,6 +4517,7 @@ async function runWorkflow() {
       body: JSON.stringify({
         name: wfName,
         steps: stepsPayload,
+        dag: true,
       }),
     });
 
@@ -3553,7 +4537,7 @@ async function runWorkflow() {
         status: 'running',
         wfId: data.workflow_id,
         wfTermHtml: '',
-        stepStates: wfSteps.map(() => ({})),
+        stepStates: {},
         ownerIdx: selectedWorkflowIdx,
       };
       renderWfList();
@@ -3570,24 +4554,23 @@ function streamWorkflow(wfId, ownerIdx) {
   const wfTerm = document.getElementById('wfTerminal');
   const evtSource = new EventSource(`/api/workflow/stream/${wfId}`);
   activeWorkflowEvtSource = evtSource;
+  let totalWorkflowCost = 0;
+  let totalWorkflowTurns = 0;
+  let stepCosts = {};
 
-  // Helper: save step DOM state to workflowRunStatus for restoration when switching back
-  function snapshotStepState(stepIdx) {
+  // Helper: save step DOM state for restoration when switching back
+  function snapshotStepState(stepId) {
     if (ownerIdx < 0 || !workflowRunStatus[ownerIdx]) return;
     const ss = workflowRunStatus[ownerIdx].stepStates;
-    if (!ss[stepIdx]) ss[stepIdx] = {};
-    const stepEl = document.getElementById(`step-${stepIdx}`);
-    const statusEl = document.getElementById(`step-status-${stepIdx}`);
-    const termEl = document.getElementById(`step-term-${stepIdx}`);
-    const conn = document.getElementById(`connector-${stepIdx}`);
-    const portIn = document.getElementById(`port-in-${stepIdx}`);
-    const portOut = document.getElementById(`port-out-${stepIdx}`);
-    if (stepEl) ss[stepIdx].nodeClass = stepEl.className;
-    if (statusEl) { ss[stepIdx].statusClass = statusEl.className; ss[stepIdx].statusHtml = statusEl.innerHTML; }
-    if (termEl) ss[stepIdx].termHtml = termEl.innerHTML;
-    if (conn) ss[stepIdx].wireClass = conn.className;
-    if (portIn) ss[stepIdx].portInClass = portIn.className;
-    if (portOut) ss[stepIdx].portOutClass = portOut.className;
+    if (!ss[stepId]) ss[stepId] = {};
+    const stepEl = document.getElementById(`step-${stepId}`);
+    const statusEl = document.getElementById(`step-status-${stepId}`);
+    const termEl = document.getElementById(`step-term-${stepId}`);
+    if (stepEl) ss[stepId].nodeClass = stepEl.className;
+    if (statusEl) { ss[stepId].statusClass = statusEl.className; ss[stepId].statusHtml = statusEl.innerHTML; }
+    if (termEl) { ss[stepId].termHtml = termEl.innerHTML; ss[stepId].termClass = termEl.className; }
+    const toggleEl = document.getElementById(`step-toggle-${stepId}`);
+    if (toggleEl) { ss[stepId].toggleClass = toggleEl.className; ss[stepId].toggleHtml = toggleEl.innerHTML; }
   }
 
   function snapshotWfTerm() {
@@ -3598,92 +4581,88 @@ function streamWorkflow(wfId, ownerIdx) {
 
   evtSource.onmessage = function(event) {
     const msg = JSON.parse(event.data);
-    // Check if we're still viewing this workflow
     const isViewing = selectedWorkflowIdx === ownerIdx;
+    // step_id is the DAG step ID string
+    const stepId = msg.step_id || msg.step;
 
     if (msg.type === 'step_start') {
-      const stepIdx = msg.step;
       if (isViewing) {
-        const stepEl = document.getElementById(`step-${stepIdx}`);
-        const statusEl = document.getElementById(`step-status-${stepIdx}`);
-        const termEl = document.getElementById(`step-term-${stepIdx}`);
+        const stepEl = document.getElementById(`step-${stepId}`);
+        const statusEl = document.getElementById(`step-status-${stepId}`);
+        const termEl = document.getElementById(`step-term-${stepId}`);
 
         if (stepEl) stepEl.classList.add('active-step');
         if (statusEl) {
           statusEl.className = 'step-status-indicator visible running';
           statusEl.innerHTML = '<div class="ae-spinner" style="width:14px;height:14px"></div> Running...';
         }
+        const toggleEl = document.getElementById(`step-toggle-${stepId}`);
+        if (toggleEl) { toggleEl.classList.add('has-content'); toggleEl.innerHTML = '&#x25B6; VIEW DETAILS (live)'; }
         if (termEl) {
-          termEl.className = 'step-terminal visible';
           termEl.innerHTML = '<span class="terminal-cursor"></span>';
+          termEl.classList.add('has-content');
         }
-
-        if (stepIdx > 0) {
-          const conn = document.getElementById(`connector-${stepIdx}`);
-          if (conn) conn.classList.add('active');
-        }
-        const portIn = document.getElementById(`port-in-${stepIdx}`);
-        const portOut = document.getElementById(`port-out-${stepIdx}`);
-        if (portIn) portIn.classList.add('active');
-        if (portOut) portOut.classList.add('active');
 
         addWfLogEvent(wfTerm, `
           <div class="activity-event activity-init">
             <div class="ae-icon">&#x25B6;</div>
             <div class="ae-body">
-              <div class="ae-title">Step ${stepIdx + 1}: ${escapeHtml(msg.name)}</div>
-              <div class="ae-detail">Starting step ${stepIdx + 1} of ${msg.total}</div>
+              <div class="ae-title">${escapeHtml(msg.name)}</div>
+              <div class="ae-detail">Starting step</div>
             </div>
           </div>`);
-        snapshotStepState(stepIdx);
+        snapshotStepState(stepId);
         snapshotWfTerm();
       }
     }
 
     else if (msg.type === 'step_complete') {
-      const stepIdx = msg.step;
       if (isViewing) {
-        const stepEl = document.getElementById(`step-${stepIdx}`);
-        const statusEl = document.getElementById(`step-status-${stepIdx}`);
+        const stepEl = document.getElementById(`step-${stepId}`);
+        const statusEl = document.getElementById(`step-status-${stepId}`);
+        const termEl = document.getElementById(`step-term-${stepId}`);
+        const toggleEl = document.getElementById(`step-toggle-${stepId}`);
         if (stepEl) { stepEl.classList.remove('active-step'); stepEl.classList.add('done-step'); }
         if (statusEl) {
           statusEl.className = 'step-status-indicator visible complete';
           statusEl.innerHTML = '&#x2705; Complete';
         }
-        if (stepIdx > 0) {
-          const conn = document.getElementById(`connector-${stepIdx}`);
-          if (conn) { conn.classList.remove('active'); conn.classList.add('done'); }
+        if (toggleEl) { toggleEl.innerHTML = termEl && termEl.classList.contains('visible') ? '&#x25BC; HIDE DETAILS' : '&#x25B6; VIEW DETAILS'; }
+
+        if (termEl && msg.result_preview) {
+          const cursor = termEl.querySelector('.terminal-cursor');
+          if (cursor) cursor.remove();
+          addStepEvent(termEl, `
+            <div class="step-output-block">
+              <div class="output-label">&#x1F4E4; STEP OUTPUT</div>
+              <div>${escapeHtml(msg.result_preview)}</div>
+            </div>`);
         }
-        const portIn = document.getElementById(`port-in-${stepIdx}`);
-        const portOut = document.getElementById(`port-out-${stepIdx}`);
-        if (portIn) { portIn.classList.remove('active'); portIn.classList.add('done'); }
-        if (portOut) { portOut.classList.remove('active'); portOut.classList.add('done'); }
 
         addWfLogEvent(wfTerm, `
           <div class="activity-event activity-result">
             <div class="ae-icon">&#x2705;</div>
             <div class="ae-body">
-              <div class="ae-title">Step ${stepIdx + 1} complete: ${escapeHtml(msg.name)}</div>
-              ${msg.result_preview ? `<div class="ae-detail" style="margin-top:4px">${escapeHtml(msg.result_preview.substring(0, 200))}${msg.result_preview.length > 200 ? '...' : ''}</div>` : ''}
+              <div class="ae-title">${escapeHtml(msg.name)} complete</div>
+              ${msg.result_preview ? '<div class="ae-detail" style="margin-top:4px">' + escapeHtml(msg.result_preview.substring(0, 300)) + (msg.result_preview.length > 300 ? '...' : '') + '</div>' : ''}
             </div>
           </div>`);
-        snapshotStepState(stepIdx);
+        snapshotStepState(stepId);
         snapshotWfTerm();
       } else {
-        // Not viewing but update cached state
-        if (workflowRunStatus[ownerIdx] && workflowRunStatus[ownerIdx].stepStates[msg.step]) {
-          workflowRunStatus[ownerIdx].stepStates[msg.step].nodeClass = 'pipeline-node done-step';
-          workflowRunStatus[ownerIdx].stepStates[msg.step].statusClass = 'step-status-indicator visible complete';
-          workflowRunStatus[ownerIdx].stepStates[msg.step].statusHtml = '&#x2705; Complete';
+        if (workflowRunStatus[ownerIdx] && workflowRunStatus[ownerIdx].stepStates) {
+          if (!workflowRunStatus[ownerIdx].stepStates[stepId]) workflowRunStatus[ownerIdx].stepStates[stepId] = {};
+          workflowRunStatus[ownerIdx].stepStates[stepId].nodeClass = 'pipeline-node done-step';
+          workflowRunStatus[ownerIdx].stepStates[stepId].statusClass = 'step-status-indicator visible complete';
+          workflowRunStatus[ownerIdx].stepStates[stepId].statusHtml = '&#x2705; Complete';
         }
       }
     }
 
     else if (msg.type === 'step_error') {
-      const stepIdx = msg.step;
       if (isViewing) {
-        const stepEl = document.getElementById(`step-${stepIdx}`);
-        const statusEl = document.getElementById(`step-status-${stepIdx}`);
+        const stepEl = document.getElementById(`step-${stepId}`);
+        const statusEl = document.getElementById(`step-status-${stepId}`);
         if (stepEl) { stepEl.classList.remove('active-step'); stepEl.classList.add('error-step'); }
         if (statusEl) {
           statusEl.className = 'step-status-indicator visible error';
@@ -3693,18 +4672,18 @@ function streamWorkflow(wfId, ownerIdx) {
           <div class="activity-event activity-error">
             <div class="ae-icon">&#x274C;</div>
             <div class="ae-body">
-              <div class="ae-title">Step ${stepIdx + 1} failed: ${escapeHtml(msg.name)}</div>
+              <div class="ae-title">${escapeHtml(msg.name)} failed</div>
               <div class="ae-detail">${escapeHtml(msg.error)}</div>
             </div>
           </div>`);
-        snapshotStepState(stepIdx);
+        snapshotStepState(stepId);
         snapshotWfTerm();
       }
     }
 
-    // Per-step streaming events
-    else if (msg.step !== undefined && isViewing) {
-      const termEl = document.getElementById(`step-term-${msg.step}`);
+    // Per-step streaming events (step_id based)
+    else if (stepId && isViewing) {
+      const termEl = document.getElementById(`step-term-${stepId}`);
       if (termEl) {
         if (msg.type === 'init') {
           addStepEvent(termEl, `
@@ -3712,14 +4691,35 @@ function streamWorkflow(wfId, ownerIdx) {
               <div class="ae-icon" style="font-size:12px">&#x1F680;</div>
               <div class="ae-body"><div class="ae-detail">Initialized | ${msg.tools ? msg.tools.length : 0} tools</div></div>
             </div>`);
+          addWfLogEvent(wfTerm, `
+            <div class="activity-event activity-init" style="opacity:0.7">
+              <div class="ae-icon">&#x1F680;</div>
+              <div class="ae-body"><div class="ae-detail">${escapeHtml(msg.step_name || '')} initialized | ${msg.tools ? msg.tools.length : 0} tools</div></div>
+            </div>`);
         }
         else if (msg.type === 'tool_call') {
+          const stepEl2 = document.getElementById(`step-${stepId}`);
+          if (stepEl2 && stepEl2.classList.contains('waiting-step')) {
+            stepEl2.classList.remove('waiting-step'); stepEl2.classList.add('active-step');
+            const statusEl2 = document.getElementById(`step-status-${stepId}`);
+            if (statusEl2) { statusEl2.className = 'step-status-indicator visible running'; statusEl2.innerHTML = '<div class="ae-spinner" style="width:14px;height:14px"></div> Running...'; }
+            if (ownerIdx >= 0 && workflowRunStatus[ownerIdx]) { workflowRunStatus[ownerIdx].status = 'running'; renderWfList(); }
+          }
           addStepEvent(termEl, `
             <div class="activity-event activity-tool" style="padding:4px 8px;margin-bottom:4px">
               <div class="ae-icon" style="font-size:12px">${getToolIcon(msg.tool)}</div>
               <div class="ae-body"><div class="ae-detail"><span style="color:var(--cyan)">${msg.tool}</span> ${escapeHtml(msg.summary)}</div></div>
               <div class="ae-spinner" style="width:12px;height:12px"></div>
             </div>`);
+          addWfLogEvent(wfTerm, `
+            <div class="activity-event activity-tool">
+              <div class="ae-icon">${getToolIcon(msg.tool)}</div>
+              <div class="ae-body">
+                <div class="ae-detail"><span style="color:var(--text-dim);font-size:10px">${escapeHtml(msg.step_name || '')}</span> <span style="color:var(--cyan)">${msg.tool}</span> ${escapeHtml(msg.summary)}</div>
+              </div>
+              <div class="ae-spinner"></div>
+            </div>`);
+          snapshotWfTerm();
         }
         else if (msg.type === 'text') {
           addStepEvent(termEl, `
@@ -3727,31 +4727,116 @@ function streamWorkflow(wfId, ownerIdx) {
               <div class="ae-icon" style="font-size:12px">&#x1F4AC;</div>
               <div class="ae-body"><div class="ae-detail">${escapeHtml(msg.data).substring(0, 300)}</div></div>
             </div>`);
+          addWfLogEvent(wfTerm, `
+            <div class="activity-event activity-text">
+              <div class="ae-icon">&#x1F4AC;</div>
+              <div class="ae-body">
+                <div class="ae-detail"><span style="color:var(--text-dim);font-size:10px">${escapeHtml(msg.step_name || '')}</span> ${escapeHtml(msg.data).substring(0, 400)}</div>
+              </div>
+            </div>`);
+          snapshotWfTerm();
         }
         else if (msg.type === 'result') {
+          const stepCost = msg.cost || 0;
+          const stepTurns = msg.num_turns || 0;
+          totalWorkflowCost += stepCost;
+          totalWorkflowTurns += stepTurns;
+          stepCosts[stepId] = { cost: stepCost, turns: stepTurns, name: msg.step_name || stepId };
           addStepEvent(termEl, `
             <div class="activity-event activity-result" style="padding:4px 8px;margin-bottom:4px">
               <div class="ae-icon" style="font-size:12px">&#x1F3C1;</div>
-              <div class="ae-body"><div class="ae-detail">${msg.num_turns} turns | ${msg.cost ? '$' + msg.cost.toFixed(4) : ''}</div></div>
+              <div class="ae-body"><div class="ae-detail">${stepTurns} turns | ${stepCost ? '$' + stepCost.toFixed(4) : '$0.00'}</div></div>
             </div>`);
         }
-        snapshotStepState(msg.step);
+        else if (msg.type === 'approval_needed') {
+          const stepEl = document.getElementById(`step-${stepId}`);
+          if (stepEl) { stepEl.classList.remove('active-step'); stepEl.classList.add('waiting-step'); }
+          const statusEl = document.getElementById(`step-status-${stepId}`);
+          if (statusEl) {
+            statusEl.className = 'step-status-indicator visible waiting';
+            statusEl.innerHTML = '&#x270B; Waiting for approval...';
+          }
+          addStepEvent(termEl, `
+            <div class="activity-event" style="padding:4px 8px;margin-bottom:4px;background:rgba(251,146,60,0.08);border-radius:6px">
+              <div class="ae-icon" style="font-size:12px">&#x270B;</div>
+              <div class="ae-body"><div class="ae-detail" style="color:var(--orange)">Needs approval: <span style="color:var(--cyan)">${escapeHtml(msg.tool || '')}</span> ${escapeHtml(msg.message || '')}</div></div>
+            </div>`);
+          if (ownerIdx >= 0 && workflowRunStatus[ownerIdx]) {
+            workflowRunStatus[ownerIdx].status = 'waiting';
+            renderWfList();
+          }
+          addWfLogEvent(wfTerm, `
+            <div class="activity-event" style="background:rgba(251,146,60,0.06);border-radius:8px">
+              <div class="ae-icon">&#x270B;</div>
+              <div class="ae-body">
+                <div class="ae-title" style="color:var(--orange)">Approval needed — ${escapeHtml(msg.step_name || '')}</div>
+                <div class="ae-detail">${escapeHtml(msg.tool || '')} — check your terminal</div>
+              </div>
+            </div>`);
+          snapshotWfTerm();
+        }
+        snapshotStepState(stepId);
+      }
+    }
+
+    // Global approval_needed
+    else if (msg.type === 'approval_needed' && !stepId) {
+      if (ownerIdx >= 0 && workflowRunStatus[ownerIdx]) {
+        workflowRunStatus[ownerIdx].status = 'waiting';
+        renderWfList();
+      }
+      if (isViewing) {
+        addWfLogEvent(wfTerm, `
+          <div class="activity-event" style="background:rgba(251,146,60,0.06);border-radius:8px">
+            <div class="ae-icon">&#x270B;</div>
+            <div class="ae-body">
+              <div class="ae-title" style="color:var(--orange)">Approval needed</div>
+              <div class="ae-detail">${escapeHtml(msg.tool || '')} — check your terminal</div>
+            </div>
+          </div>`);
+        snapshotWfTerm();
       }
     }
 
     else if (msg.type === 'workflow_status') {
       if (ownerIdx >= 0 && workflowRunStatus[ownerIdx]) {
         workflowRunStatus[ownerIdx].status = msg.status;
+        if (msg.final_output) workflowRunStatus[ownerIdx].finalOutput = msg.final_output;
         renderWfList();
       }
       if (isViewing && (msg.status === 'done' || msg.status === 'error' || msg.status === 'stopped')) {
+        let costSummaryHtml = '';
+        if (msg.status === 'done' && totalWorkflowCost > 0) {
+          let perStepLines = Object.entries(stepCosts).map(([si, sc]) =>
+            `${sc.name || si}: ${sc.turns} turns — $${sc.cost.toFixed(4)}`
+          ).join('\n');
+          costSummaryHtml = `
+            <div style="margin-top:10px;padding:10px;background:rgba(102,126,234,0.06);border:1px solid rgba(102,126,234,0.2);border-radius:8px">
+              <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:var(--cyan);margin-bottom:6px">COST BREAKDOWN</div>
+              <div style="font-size:12px;color:var(--text-dim);white-space:pre-line;margin-bottom:8px">${escapeHtml(perStepLines)}</div>
+              <div style="font-family:'Press Start 2P',monospace;font-size:10px;color:var(--green);border-top:1px solid #334;padding-top:8px">
+                TOTAL: ${totalWorkflowTurns} turns — $${totalWorkflowCost.toFixed(4)}
+              </div>
+            </div>`;
+        }
+        let finalOutputHtml = '';
+        if (msg.status === 'done' && msg.final_output) {
+          finalOutputHtml = `
+            <div class="wf-final-output">
+              <div class="output-label">&#x1F4CB; FINAL OUTPUT</div>
+              <div>${escapeHtml(msg.final_output)}</div>
+            </div>`;
+        }
         addWfLogEvent(wfTerm, `
           <div class="activity-event ${msg.status === 'done' ? 'activity-result' : 'activity-error'}">
             <div class="ae-icon">${msg.status === 'done' ? '&#x1F3C6;' : '&#x26A0;'}</div>
             <div class="ae-body">
               <div class="ae-title">Workflow ${msg.status.toUpperCase()}</div>
+              ${msg.status === 'done' && totalWorkflowCost > 0 ? '<div class="ae-detail" style="margin-top:4px;color:var(--green)">Total cost: $' + totalWorkflowCost.toFixed(4) + ' | ' + totalWorkflowTurns + ' turns</div>' : ''}
             </div>
           </div>`);
+        if (finalOutputHtml) addWfLogEvent(wfTerm, finalOutputHtml);
+        if (costSummaryHtml) addWfLogEvent(wfTerm, costSummaryHtml);
         snapshotWfTerm();
       }
     }
@@ -3845,10 +4930,9 @@ checkServer();
   renderPalette();
   renderToolsLegend();
   renderWfList();
-  // Initialize with 2 empty steps
+  // Initialize with 1 root step
   if (wfSteps.length === 0) {
-    addPipelineStep();
-    addPipelineStep();
+    addRootStep();
   }
 })();
 </script>

@@ -49,18 +49,39 @@ workflow_counter = 0
 workflow_lock = threading.Lock()
 
 
-def parse_stream_event(line, q, step_idx=None):
-    """Parse a stream-json line from claude CLI and emit UI-friendly events."""
+def parse_stream_event(line, q, step_idx=None, step_name=None):
+    """Parse a stream-json line from claude CLI and emit UI-friendly events.
+    step_idx can be an integer (legacy) or a string step_id (DAG).
+    """
     try:
         evt = json.loads(line)
     except json.JSONDecodeError:
         msg = {"type": "raw", "data": line}
         if step_idx is not None:
             msg["step"] = step_idx
+            msg["step_id"] = step_idx
+            if step_name:
+                msg["step_name"] = step_name
         q.put(msg)
         return
 
     evt_type = evt.get("type", "")
+
+    # Permission / approval requests
+    if evt_type == "system" and evt.get("subtype") in ("permission_request", "tool_use_permission"):
+        tool_name = evt.get("tool", {}).get("name", "") if isinstance(evt.get("tool"), dict) else evt.get("tool", "")
+        msg = {
+            "type": "approval_needed",
+            "tool": tool_name,
+            "message": evt.get("message", "Permission required"),
+        }
+        if step_idx is not None:
+            msg["step"] = step_idx
+            msg["step_id"] = step_idx
+            if step_name:
+                msg["step_name"] = step_name
+        q.put(msg)
+        return
 
     if evt_type == "system" and evt.get("subtype") == "init":
         msg = {
@@ -72,6 +93,9 @@ def parse_stream_event(line, q, step_idx=None):
         }
         if step_idx is not None:
             msg["step"] = step_idx
+            msg["step_id"] = step_idx
+            if step_name:
+                msg["step_name"] = step_name
         q.put(msg)
 
     elif evt_type == "assistant":
@@ -84,6 +108,9 @@ def parse_stream_event(line, q, step_idx=None):
                     msg = {"type": "text", "data": text}
                     if step_idx is not None:
                         msg["step"] = step_idx
+                        msg["step_id"] = step_idx
+                        if step_name:
+                            msg["step_name"] = step_name
                     q.put(msg)
 
             elif block.get("type") == "tool_use":
@@ -100,6 +127,9 @@ def parse_stream_event(line, q, step_idx=None):
                 }
                 if step_idx is not None:
                     msg["step"] = step_idx
+                    msg["step_id"] = step_idx
+                    if step_name:
+                        msg["step_name"] = step_name
                 q.put(msg)
 
             elif block.get("type") == "tool_result":
@@ -116,6 +146,9 @@ def parse_stream_event(line, q, step_idx=None):
                 }
                 if step_idx is not None:
                     msg["step"] = step_idx
+                    msg["step_id"] = step_idx
+                    if step_name:
+                        msg["step_name"] = step_name
                 q.put(msg)
 
     elif evt_type == "result":
@@ -128,6 +161,9 @@ def parse_stream_event(line, q, step_idx=None):
         }
         if step_idx is not None:
             msg["step"] = step_idx
+            msg["step_id"] = step_idx
+            if step_name:
+                msg["step_name"] = step_name
         q.put(msg)
 
 
@@ -184,7 +220,7 @@ def truncate_obj(obj, max_len):
     return s
 
 
-def run_agent(agent_id, prompt):
+def run_agent(agent_id, prompt, resume_session=None):
     """Run claude CLI with stream-json output and parse events."""
     agent = active_agents[agent_id]
     q = agent["output_queue"]
@@ -193,7 +229,7 @@ def run_agent(agent_id, prompt):
         agent["status"] = "running"
         q.put({"type": "status", "status": "running"})
 
-        result_text = run_claude_cli(prompt, q)
+        result_text = run_claude_cli(prompt, q, resume_session=resume_session, agent_id=agent_id)
         agent["result"] = result_text
         agent["status"] = "done"
         q.put({"type": "status", "status": "done", "exit_code": 0})
@@ -205,13 +241,17 @@ def run_agent(agent_id, prompt):
     q.put({"type": "done"})
 
 
-def run_claude_cli(prompt, q, step_idx=None):
+def run_claude_cli(prompt, q, step_idx=None, step_name=None, resume_session=None, agent_id=None):
     """Run claude CLI and stream events to queue. Returns result text."""
     clean_env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
     clean_env["NO_COLOR"] = "1"
 
+    cmd = [CLAUDE_BIN, "-p", prompt, "--output-format", "stream-json", "--verbose"]
+    if resume_session:
+        cmd.extend(["--resume", resume_session])
+
     proc = subprocess.Popen(
-        [CLAUDE_BIN, "-p", prompt, "--output-format", "stream-json", "--verbose"],
+        cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -219,17 +259,26 @@ def run_claude_cli(prompt, q, step_idx=None):
         env=clean_env,
     )
 
+    # Store process reference for agent followups
+    if agent_id and agent_id in active_agents:
+        active_agents[agent_id]["process"] = proc
+
     result_text = ""
     for line in proc.stdout:
         line = line.strip()
         if not line:
             continue
-        parse_stream_event(line, q, step_idx)
-        # Capture result text
+        parse_stream_event(line, q, step_idx, step_name=step_name)
+        # Capture result text and session_id
         try:
             evt = json.loads(line)
             if evt.get("type") == "result":
                 result_text = evt.get("result", "")
+            # Capture session_id from init event for follow-ups
+            if evt.get("type") == "system" and evt.get("subtype") == "init":
+                sid = evt.get("session_id", "")
+                if sid and agent_id and agent_id in active_agents:
+                    active_agents[agent_id]["session_id"] = sid
         except json.JSONDecodeError:
             pass
 
@@ -241,6 +290,7 @@ def run_claude_cli(prompt, q, step_idx=None):
         msg = {"type": "stderr", "data": stderr_out.strip()[:500]}
         if step_idx is not None:
             msg["step"] = step_idx
+            msg["step_id"] = step_idx
         q.put(msg)
 
     if exit_code != 0:
@@ -250,35 +300,123 @@ def run_claude_cli(prompt, q, step_idx=None):
 
 
 def run_workflow(workflow_id):
-    """Run a multi-step workflow, chaining agent outputs."""
+    """Run a DAG-based workflow with concurrent execution."""
     wf = active_workflows[workflow_id]
     q = wf["output_queue"]
     steps = wf["steps"]
-    total = len(steps)
+    is_dag = wf.get("dag", False)
 
+    # If not DAG format, fall back to legacy linear execution
+    if not is_dag:
+        run_workflow_linear(workflow_id)
+        return
+
+    total = len(steps)
     try:
         wf["status"] = "running"
         q.put({"type": "workflow_status", "status": "running", "total_steps": total})
 
-        previous_output = ""
+        # Build lookup maps
+        step_map = {s["id"]: s for s in steps}
+        # Track results and errors per step
+        step_results = {}  # id -> result_text
+        step_errors = {}   # id -> error_msg
+        step_done = set()
+        step_lock = threading.Lock()
 
-        for i, step in enumerate(steps):
-            wf["current_step"] = i
+        def get_children(parent_id):
+            return [s for s in steps if parent_id in s.get("parentIds", [])]
 
-            step_name = step.get("name", f"Step {i+1}")
+        def get_parents(step):
+            return [step_map[pid] for pid in step.get("parentIds", []) if pid in step_map]
+
+        def can_run(step):
+            """Check if a step's trigger conditions are met."""
+            parent_ids = step.get("parentIds", [])
+            trigger = step.get("trigger", "on_complete")
+
+            if not parent_ids:
+                return True  # Root step
+
+            if trigger == "on_failure":
+                # Runs only if ANY parent failed
+                return any(pid in step_errors for pid in parent_ids)
+
+            if trigger == "on_all_parents":
+                # Runs only when ALL parents are done (success or skipped)
+                return all(pid in step_done for pid in parent_ids)
+
+            # on_complete: runs when ANY parent completes successfully
+            return any(pid in step_results for pid in parent_ids)
+
+        def should_skip(step):
+            """Check if a step should be skipped."""
+            parent_ids = step.get("parentIds", [])
+            trigger = step.get("trigger", "on_complete")
+
+            if not parent_ids:
+                return False
+
+            if trigger == "on_failure":
+                # Skip if no parent has failed
+                return not any(pid in step_errors for pid in parent_ids)
+
+            if trigger == "on_all_parents":
+                # Skip if any parent errored (and no on_failure handler)
+                all_done = all(pid in step_done for pid in parent_ids)
+                if not all_done:
+                    return False
+                # Check if all parents that are done succeeded
+                return False  # Don't skip, just run
+
+            # on_complete: skip if all parents errored
+            return all(pid in step_errors and pid not in step_results for pid in parent_ids)
+
+        def build_context(step):
+            """Build prompt context from parent outputs."""
+            parent_ids = step.get("parentIds", [])
+            trigger = step.get("trigger", "on_complete")
+            context_parts = []
+
+            if trigger == "on_failure":
+                for pid in parent_ids:
+                    if pid in step_errors:
+                        context_parts.append(f"PARENT STEP FAILED WITH ERROR:\n{step_errors[pid]}")
+            else:
+                for pid in parent_ids:
+                    if pid in step_results and step_results[pid]:
+                        parent_name = step_map[pid].get("name", pid)
+                        context_parts.append(f"CONTEXT FROM {parent_name}:\n{step_results[pid]}")
+
+            return "\n\n".join(context_parts)
+
+        def run_step(step):
+            """Execute a single DAG step."""
+            step_id = step["id"]
+            step_name = step.get("name", step_id)
             step_prompt = step.get("prompt", "")
             step_skills = step.get("skills", [])
 
-            # Build the full prompt for this step
+            # Check if should skip
+            if should_skip(step):
+                q.put({
+                    "type": "step_complete",
+                    "step_id": step_id,
+                    "name": step_name,
+                    "result_preview": "(skipped)",
+                    "skipped": True,
+                })
+                with step_lock:
+                    step_done.add(step_id)
+                return
+
+            # Build full prompt
+            context = build_context(step)
             full_prompt = ""
-
-            # Include previous step output as context
-            if previous_output:
-                full_prompt += f"CONTEXT FROM PREVIOUS STEP:\n{previous_output}\n\n"
-
+            if context:
+                full_prompt += context + "\n\n"
             full_prompt += step_prompt
 
-            # Add skills
             if step_skills:
                 skill_list = "\n".join(
                     f"- /{s['name']} ({s.get('type', 'skill')}): {s.get('desc', '')}"
@@ -289,36 +427,196 @@ def run_workflow(workflow_id):
             # Signal step start
             q.put({
                 "type": "step_start",
-                "step": i,
+                "step_id": step_id,
                 "name": step_name,
                 "total": total,
             })
 
             try:
-                result_text = run_claude_cli(full_prompt, q, step_idx=i)
-                previous_output = result_text
+                result_text = run_claude_cli(full_prompt, q, step_idx=step_id, step_name=step_name)
+                with step_lock:
+                    step_results[step_id] = result_text
+                    step_done.add(step_id)
 
                 q.put({
                     "type": "step_complete",
-                    "step": i,
+                    "step_id": step_id,
                     "name": step_name,
-                    "result_preview": result_text[:500] if result_text else "",
+                    "result_preview": result_text[:2000] if result_text else "",
                 })
 
             except Exception as e:
+                error_msg = str(e)
+                with step_lock:
+                    step_errors[step_id] = error_msg
+                    step_done.add(step_id)
+
                 q.put({
                     "type": "step_error",
-                    "step": i,
+                    "step_id": step_id,
                     "name": step_name,
-                    "error": str(e),
+                    "error": error_msg,
                 })
+
+        # BFS-style level execution
+        # Compute levels
+        levels = {}
+        visited = set()
+        bfs_queue = []
+        for s in steps:
+            if not s.get("parentIds"):
+                levels[s["id"]] = 0
+                bfs_queue.append(s["id"])
+                visited.add(s["id"])
+
+        while bfs_queue:
+            curr_id = bfs_queue.pop(0)
+            children = get_children(curr_id)
+            for child in children:
+                new_level = levels[curr_id] + 1
+                levels[child["id"]] = max(levels.get(child["id"], 0), new_level)
+                if child["id"] not in visited:
+                    visited.add(child["id"])
+                    bfs_queue.append(child["id"])
+
+        # Handle orphans
+        for s in steps:
+            if s["id"] not in levels:
+                levels[s["id"]] = 0
+
+        max_level = max(levels.values()) if levels else 0
+
+        for lvl in range(max_level + 1):
+            level_steps = [s for s in steps if levels.get(s["id"]) == lvl]
+
+            # Filter to only runnable steps
+            runnable = [s for s in level_steps if can_run(s)]
+            skippable = [s for s in level_steps if s not in runnable]
+
+            # Mark skipped steps
+            for s in skippable:
+                sid = s["id"]
+                q.put({
+                    "type": "step_complete",
+                    "step_id": sid,
+                    "name": s.get("name", sid),
+                    "result_preview": "(skipped — trigger condition not met)",
+                    "skipped": True,
+                })
+                with step_lock:
+                    step_done.add(sid)
+
+            if not runnable:
+                continue
+
+            # Run steps at this level in parallel
+            if len(runnable) == 1:
+                run_step(runnable[0])
+            else:
+                threads = []
+                for s in runnable:
+                    t = threading.Thread(target=run_step, args=(s,))
+                    t.start()
+                    threads.append(t)
+                for t in threads:
+                    t.join()
+
+            # Check if workflow should stop (all paths errored, no failure handlers)
+            # Only stop if there are no more runnable steps in future levels
+            if wf.get("status") == "stopped":
+                q.put({"type": "done"})
+                return
+
+        # Collect final output from leaf nodes (steps with no children)
+        leaf_outputs = []
+        for s in steps:
+            if not get_children(s["id"]) and s["id"] in step_results:
+                leaf_outputs.append(step_results[s["id"]])
+
+        final_output = "\n\n".join(leaf_outputs) if leaf_outputs else ""
+
+        wf["status"] = "done"
+        q.put({"type": "workflow_status", "status": "done", "final_output": final_output[:3000]})
+
+    except Exception as e:
+        wf["status"] = "error"
+        q.put({"type": "workflow_error", "data": str(e)})
+
+    q.put({"type": "done"})
+
+
+def run_workflow_linear(workflow_id):
+    """Legacy linear workflow execution (for old-format workflows)."""
+    wf = active_workflows[workflow_id]
+    q = wf["output_queue"]
+    steps = wf["steps"]
+    total = len(steps)
+
+    try:
+        wf["status"] = "running"
+        q.put({"type": "workflow_status", "status": "running", "total_steps": total})
+
+        previous_output = ""
+        previous_error = None
+
+        for i, step in enumerate(steps):
+            wf["current_step"] = i
+            step_name = step.get("name", f"Step {i+1}")
+            step_prompt = step.get("prompt", "")
+            step_skills = step.get("skills", [])
+            trigger = step.get("trigger", "on_complete")
+
+            if trigger == "on_failure" and previous_error is None:
+                q.put({
+                    "type": "step_complete", "step": i, "name": step_name,
+                    "result_preview": "(skipped — previous step succeeded)", "skipped": True,
+                })
+                continue
+            elif trigger == "on_failure" and previous_error:
+                step_prompt = f"THE PREVIOUS STEP FAILED WITH ERROR:\n{previous_error}\n\n{step_prompt}"
+            elif trigger != "on_failure" and previous_error:
                 wf["status"] = "error"
                 q.put({"type": "workflow_status", "status": "error"})
                 q.put({"type": "done"})
                 return
 
+            full_prompt = ""
+            if previous_output:
+                full_prompt += f"CONTEXT FROM PREVIOUS STEP:\n{previous_output}\n\n"
+            full_prompt += step_prompt
+
+            if step_skills:
+                skill_list = "\n".join(
+                    f"- /{s['name']} ({s.get('type', 'skill')}): {s.get('desc', '')}"
+                    for s in step_skills
+                )
+                full_prompt += f"\n\nYou have access to these skills — use them as needed:\n{skill_list}"
+
+            q.put({"type": "step_start", "step": i, "name": step_name, "total": total})
+
+            try:
+                result_text = run_claude_cli(full_prompt, q, step_idx=i)
+                previous_output = result_text
+                q.put({
+                    "type": "step_complete", "step": i, "name": step_name,
+                    "result_preview": result_text[:2000] if result_text else "",
+                })
+            except Exception as e:
+                error_msg = str(e)
+                q.put({"type": "step_error", "step": i, "name": step_name, "error": error_msg})
+                next_step = steps[i + 1] if i + 1 < total else None
+                if next_step and next_step.get("trigger") == "on_failure":
+                    previous_error = error_msg
+                    continue
+                wf["status"] = "error"
+                q.put({"type": "workflow_status", "status": "error"})
+                q.put({"type": "done"})
+                return
+
+            previous_error = None
+
         wf["status"] = "done"
-        q.put({"type": "workflow_status", "status": "done"})
+        q.put({"type": "workflow_status", "status": "done", "final_output": previous_output[:3000] if previous_output else ""})
 
     except Exception as e:
         wf["status"] = "error"
@@ -398,6 +696,43 @@ class VibeHandler(SimpleHTTPRequestHandler):
 
             self.send_json({"agent_id": agent_id, "status": "starting"})
 
+        elif parsed.path == "/api/followup":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+
+            agent_id = data.get("agent_id", "")
+            message = data.get("message", "")
+
+            if not agent_id or not message:
+                self.send_json({"error": "agent_id and message required"}, 400)
+                return
+
+            agent = active_agents.get(agent_id)
+            if not agent:
+                self.send_json({"error": "Agent not found"}, 404)
+                return
+
+            session_id = agent.get("session_id", "")
+            if not session_id:
+                self.send_json({"error": "No session_id available for this agent"}, 400)
+                return
+
+            # Reset agent state for follow-up
+            agent["output_queue"] = queue.Queue()
+            agent["status"] = "running"
+            agent["result"] = ""
+
+            thread = threading.Thread(
+                target=run_agent,
+                args=(agent_id, message),
+                kwargs={"resume_session": session_id},
+                daemon=True,
+            )
+            thread.start()
+
+            self.send_json({"agent_id": agent_id, "status": "running", "session_id": session_id})
+
         elif parsed.path == "/api/workflow/launch":
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length)
@@ -410,6 +745,8 @@ class VibeHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "No steps provided"}, 400)
                 return
 
+            is_dag = data.get("dag", False)
+
             global workflow_counter
             with workflow_lock:
                 workflow_counter += 1
@@ -420,6 +757,7 @@ class VibeHandler(SimpleHTTPRequestHandler):
                     "name": name,
                     "steps": steps,
                     "current_step": -1,
+                    "dag": is_dag,
                 }
 
             thread = threading.Thread(target=run_workflow, args=(wf_id,), daemon=True)
